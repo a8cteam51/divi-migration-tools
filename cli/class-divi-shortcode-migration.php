@@ -18,6 +18,113 @@ class Divi_Shortcode_Migration extends WP_CLI_Command {
 	private $skippable_shortcodes  = array( 'et_social_follow', 'embed', 'caption', 'toc', 'Sarcastic', 'gallery', 'Tweet', 'Proof', 'et_pb_social_media_follow', 'et_pb_social_media_follow_network', 'et_pb_testimonial', 'et_pb_contact_form', 'et_pb_contact_field', 'et_pb_blog', 'et_pb_pricing_tables', 'et_pb_blurb', 'et_pb_video_slider', 'et_pb_video_slider_item', 'et_pb_team_member', 'et_pb_tabs', 'et_pb_tab' );
 
 	/**
+	 * To reset Divi post Content.
+	 *
+	 * ## EXAMPLES
+	 *
+	 *   wp divi-cli reset-post-content
+	 *
+	 * @subcommand reset-post-content
+	 *
+	 * @param array $args Store all the positional arguments.
+	 * @param array $assoc_args Store all the associative arguments.
+	 *
+	 * @throws \Exception If any errors.
+	 */
+	public function reset_divi_post_content( $args, $assoc_args ) {
+
+		// Starting time of the script.
+		$start_time = time();
+
+		// To enable WP_IMPORTING.
+		if ( ! defined( 'WP_IMPORTING' ) ) {
+			define( 'WP_IMPORTING', true );
+		}
+
+		if ( ! empty( $assoc_args['dry-run'] ) && 'false' === $assoc_args['dry-run'] ) {
+
+			$this->dry_run = false;
+		}
+
+		if ( ! empty( $assoc_args['post-type'] ) && in_array( $assoc_args['post-type'], array( 'page', 'project' ), true ) ) {
+
+			$this->post_type = $assoc_args['post-type'];
+		}
+
+		if ( $this->dry_run ) {
+
+			$this->write_log( '' );
+			$this->warning( 'You have called the command divi-cli:reset-post-content in dry run mode.' . "\n" );
+		}
+
+		$limit = -1;
+
+		if ( ! empty( $assoc_args['limit'] ) ) {
+			$limit = intval( $assoc_args['limit'] );
+		}
+
+		$post_status = 'publish';
+
+		if ( ! empty( $assoc_args['status'] ) && 'draft' === $assoc_args['status'] ) {
+			$post_status = 'draft';
+		}
+
+		$this->write_log( '' );
+		$this->write_log( sprintf( 'Migrating the shortcodes from %s post type.', $this->post_type ) . "\n" );
+
+		$args = array(
+			'numberposts' => $limit,
+			'orderby'     => 'ID',
+			'order'       => 'ASC',
+			'post_type'   => $this->post_type,
+			'post_status' => $post_status,
+		);
+
+		$posts = get_posts( $args ); // @codingStandardsIgnoreLine: No need to maintain the caching here, so get_posts is okay to use.
+
+		$total_found   = count( $posts );
+		$success_count = 0;
+		$fail_count    = 0;
+
+		$this->write_log( sprintf( 'Found %d posts to be pass through migration', $total_found ) . "\n" );
+
+		foreach ( $posts as $post ) {
+			$post = (array) $post;
+
+			if ( ! $this->dry_run ) {
+
+				$new_post = array(
+					'ID'                => $post['ID'],
+					'post_content'      => get_post_meta( $post['ID'], '_divi_post_content', true ),
+					'post_modified'     => $post['post_modified'],
+					'post_modified_gmt' => $post['post_modified_gmt'],
+				);
+
+				$result = wp_update_post( $new_post, true );
+				if ( is_wp_error( $result ) ) {
+					$fail_count++;
+				} else {
+					$success_count++;
+				}
+			}
+		}
+
+		if ( $this->dry_run ) {
+
+			$this->success( sprintf( 'Total %d posts will be processed.', $total_found ) );
+			$this->warning( sprintf( 'Total %d posts will be failed to process.', $fail_count ) );
+
+		} else {
+
+			$this->success( sprintf( 'Total %d posts have been processed.', $success_count ) );
+			$this->warning( sprintf( 'Total %d posts have been failed to process.', $fail_count ) );
+		}
+
+		WP_CLI::line( '' );
+		WP_CLI::success( sprintf( 'Total time taken by this script: %s', human_time_diff( $start_time, time() ) ) . PHP_EOL . PHP_EOL );
+	}
+
+	/**
 	 * To convert the Divi shortcodes in post content.
 	 *
 	 * ## EXAMPLES
