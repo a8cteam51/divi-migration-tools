@@ -293,22 +293,31 @@ class Divi_Shortcode_Migration extends WP_CLI_Command {
 					$status = 'migrated';
 				} elseif ( 'et_pb_button' === $shortcode_name ) {
 
+					$target_url = '';
+					if ( ! empty( $attributes['url_new_window'] ) && 'on' === empty( $attributes['url_new_window'] ) ) {
+						$target_url = 'target="_blank"';
+					}
+
+					/**
+					 * @todo: @devik check if we can implement disable based on view point. i.e. for mobile,tablet,desktop
+					 * Divi example : ["disabled_on"]=> "off|off|off" [M|T|D]
+					 */
 					if ( ! empty( $attributes['button_text_color'] ) && ! empty( $attributes['button_bg_color'] ) ) {
 						$gb_button_block  = sprintf( '<!-- wp:button {"customBackgroundColor":"%s","customTextColor":"%s"} -->', $attributes['button_bg_color'], $attributes['button_text_color'] );
 						$gb_button_block .= PHP_EOL;
-						$gb_button_block .= sprintf( '<div class="wp-block-button"><a class="wp-block-button__link has-text-color has-background" href="%s" style="background-color:%s;color:%s">%s</a></div>', $attributes['button_url'], $attributes['button_bg_color'], $attributes['button_text_color'], $attributes['button_text'] );
+						$gb_button_block .= sprintf( '<div class="wp-block-button"><a class="wp-block-button__link has-text-color has-background" href="%s" %s style="background-color:%s;color:%s">%s</a></div>', $attributes['button_url'], $target_url, $attributes['button_bg_color'], $attributes['button_text_color'], $attributes['button_text'] );
 					} elseif ( ! empty( $attributes['button_text_color'] ) ) {
 						$gb_button_block  = sprintf( '<!-- wp:button {"customTextColor":"%s"} -->', $attributes['button_text_color'] );
 						$gb_button_block .= PHP_EOL;
-						$gb_button_block .= sprintf( '<div class="wp-block-button"><a class="wp-block-button__link has-text-color has-background" href="%s" style="color:%s">%s</a></div>', $attributes['button_url'], $attributes['button_text_color'], $attributes['button_text'] );
+						$gb_button_block .= sprintf( '<div class="wp-block-button"><a class="wp-block-button__link has-text-color has-background" href="%s" %s style="color:%s">%s</a></div>', $attributes['button_url'], $target_url, $attributes['button_text_color'], $attributes['button_text'] );
 					} elseif ( ! empty( $attributes['button_bg_color'] ) ) {
 						$gb_button_block  = sprintf( '<!-- wp:button {"customBackgroundColor":"%s"} -->', $attributes['button_bg_color'] );
 						$gb_button_block .= PHP_EOL;
-						$gb_button_block .= sprintf( '<div class="wp-block-button"><a class="wp-block-button__link has-text-color has-background" href="%s" style="background-color:%s;">%s</a></div>', $attributes['button_url'], $attributes['button_bg_color'], $attributes['button_text'] );
+						$gb_button_block .= sprintf( '<div class="wp-block-button"><a class="wp-block-button__link has-text-color has-background" href="%s" %s style="background-color:%s;">%s</a></div>', $attributes['button_url'], $target_url, $attributes['button_bg_color'], $attributes['button_text'] );
 					} else {
 						$gb_button_block  = '<!-- wp:button -->';
 						$gb_button_block .= PHP_EOL;
-						$gb_button_block .= sprintf( '<div class="wp-block-button"><a class="wp-block-button__link " href="%s">%s</a></div>', $attributes['button_url'], $attributes['button_text'] );
+						$gb_button_block .= sprintf( '<div class="wp-block-button"><a class="wp-block-button__link " href="%s" %s>%s</a></div>', $attributes['button_url'], $target_url, $attributes['button_text'] );
 					}
 					$gb_button_block .= PHP_EOL;
 					$gb_button_block .= '<!-- /wp:button -->';
@@ -322,12 +331,25 @@ class Divi_Shortcode_Migration extends WP_CLI_Command {
 
 					$att_id = attachment_url_to_postid( $attributes['src'] );
 
+					/**
+					 * Divi attributes: Skipped because of less support in Core gutenberg block.
+					 * force_fullwidth="on" positioning="absolute"
+					 * disabled_on="off|off|on"
+					 * module_id="img-test-ID" module_class="img-test-class"
+					 * border_color_all="#000000" border_width_all="3px"
+					 * border_color_right="#000000" border_width_right="9px"
+					 * custom_css_main_element="background:red;" custom_css_before="background:green;" custom_css_after="background:blue;"
+					 */
+
 					if ( $att_id ) {
 						$gb_attr   = sprintf( '"id":%s,"sizeSlug":"medium",', $att_id );
 						$style_str = '';
 
 						if ( empty( $attributes['align'] ) ) {
 							$attributes['align'] = 'left';
+						}
+						if ( empty( $attributes['alt'] ) ) {
+							$attributes['alt'] = '';
 						}
 						$gb_attr .= sprintf( '"align":"%s",', $attributes['align'] );
 						if ( ! empty( $attributes['max_width'] ) ) {
@@ -340,7 +362,7 @@ class Divi_Shortcode_Migration extends WP_CLI_Command {
 						}
 						$gb_img_block  = sprintf( '<!-- wp:image {%s} -->', trim( $gb_attr, ',' ) );
 						$gb_img_block .= PHP_EOL;
-						$gb_img_block .= sprintf( '<div class="wp-block-image"><figure class="align%s size-medium"><img src="%s" alt="" class="wp-image-%s"/></figure></div>', $attributes['align'], $attributes['src'], $att_id );
+						$gb_img_block .= sprintf( '<div class="wp-block-image"><figure class="align%s size-medium"><img src="%s" alt="%s" class="wp-image-%s"/></figure></div>', $attributes['align'], $attributes['src'], $attributes['alt'], $att_id );
 						$gb_img_block .= PHP_EOL;
 						$gb_img_block .= '<!-- /wp:image -->';
 						$status        = 'migrated';
@@ -360,7 +382,7 @@ class Divi_Shortcode_Migration extends WP_CLI_Command {
 
 						$gb_img_block  = sprintf( '<!-- wp:html {%s} -->', trim( $gb_attr, ',' ) );
 						$gb_img_block .= PHP_EOL;
-						$gb_img_block .= sprintf( '<div class="wp-block-image"><figure class="align%s size-medium"><img src="%s" alt=""/></figure></div>', $attributes['align'], $attributes['src'] );
+						$gb_img_block .= sprintf( '<div class="wp-block-image"><figure class="align%s size-medium"><img src="%s" alt="%s"/></figure></div>', $attributes['align'], $attributes['src'], $attributes['alt'] );
 						$gb_img_block .= PHP_EOL;
 						$gb_img_block .= '<!-- /wp:html -->';
 						$status        = 'migrated';
