@@ -273,8 +273,7 @@ class Divi_Shortcode_Migration extends WP_CLI_Command {
 				if ( 'et_pb_video' === $shortcode_name ) {
 					// Youtube embeds.
 					$src = $attributes['src'];
-					if ( ! empty( $src ) ) {
-						$thumb             = ( empty( $attributes['image_src'] ) ) ? $src : 'http:' . $attributes['image_src'];
+					if ( ! empty( $src ) && false !== strpos( $src, 'youtube.com' ) ) {
 						$gb_youtube_block  = sprintf( '<!-- wp:core-embed/youtube {"url":"%s","type":"video","providerNameSlug":"youtube","className":"wp-embed-aspect-16-9 wp-has-aspect-ratio"} -->', $src );
 						$gb_youtube_block .= PHP_EOL;
 						$gb_youtube_block .= '<figure class="wp-block-embed-youtube wp-block-embed is-type-video is-provider-youtube wp-embed-aspect-16-9 wp-has-aspect-ratio"><div class="wp-block-embed__wrapper">';
@@ -289,6 +288,31 @@ class Divi_Shortcode_Migration extends WP_CLI_Command {
 							$shortcode = $match[0] . ']';
 						}
 						$post_content = str_replace( $shortcode, $gb_youtube_block, $post_content );
+					} elseif ( empty( $src ) && ! empty( $attributes['src_webm'] ) ) {
+						$src   = $attributes['src_webm'];
+						$thumb = ( empty( $attributes['image_src'] ) ) ? '' : 'poster="' . $attributes['image_src'] . '"';
+
+						$att_id = attachment_url_to_postid( $src );
+
+						if ( ! empty( $att_id ) ) {
+							$gb_video_block = sprintf( '<!-- wp:video {"id":%s} -->', $att_id );
+						} else {
+							$gb_video_block = '<!-- wp:video -->';
+						}
+
+						$gb_video_block .= PHP_EOL;
+						$gb_video_block .= '<figure class="wp-block-video">';
+						$gb_video_block .= PHP_EOL;
+						$gb_video_block .= sprintf( '<video controls src="%s" %s></video>', $src, $thumb );
+						$gb_video_block .= PHP_EOL;
+						$gb_video_block .= '</figure>';
+						$gb_video_block .= PHP_EOL;
+						$gb_video_block .= '<!-- /wp:video -->';
+
+						if ( false === strpos( $post_content, $shortcode ) ) {
+							$shortcode = $match[0] . ']';
+						}
+						$post_content = str_replace( $shortcode, $gb_video_block, $post_content );
 					}
 					$status = 'migrated';
 				} elseif ( 'et_pb_button' === $shortcode_name ) {
