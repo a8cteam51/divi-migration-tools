@@ -18,6 +18,113 @@ class Divi_Shortcode_Migration extends WP_CLI_Command {
 	private $skippable_shortcodes  = array( 'et_social_follow', 'embed', 'caption', 'toc', 'Sarcastic', 'gallery', 'Tweet', 'Proof', 'et_pb_social_media_follow', 'et_pb_social_media_follow_network', 'et_pb_testimonial', 'et_pb_contact_form', 'et_pb_contact_field', 'et_pb_blog', 'et_pb_pricing_tables', 'et_pb_blurb', 'et_pb_video_slider', 'et_pb_video_slider_item', 'et_pb_team_member', 'et_pb_tabs', 'et_pb_tab' );
 
 	/**
+	 * To reset Divi post Content.
+	 *
+	 * ## EXAMPLES
+	 *
+	 *   wp divi-cli reset-post-content
+	 *
+	 * @subcommand reset-post-content
+	 *
+	 * @param array $args Store all the positional arguments.
+	 * @param array $assoc_args Store all the associative arguments.
+	 *
+	 * @throws \Exception If any errors.
+	 */
+	public function reset_divi_post_content( $args, $assoc_args ) {
+
+		// Starting time of the script.
+		$start_time = time();
+
+		// To enable WP_IMPORTING.
+		if ( ! defined( 'WP_IMPORTING' ) ) {
+			define( 'WP_IMPORTING', true );
+		}
+
+		if ( ! empty( $assoc_args['dry-run'] ) && 'false' === $assoc_args['dry-run'] ) {
+
+			$this->dry_run = false;
+		}
+
+		if ( ! empty( $assoc_args['post-type'] ) && in_array( $assoc_args['post-type'], array( 'page', 'project' ), true ) ) {
+
+			$this->post_type = $assoc_args['post-type'];
+		}
+
+		if ( $this->dry_run ) {
+
+			$this->write_log( '' );
+			$this->warning( 'You have called the command divi-cli:reset-post-content in dry run mode.' . "\n" );
+		}
+
+		$limit = -1;
+
+		if ( ! empty( $assoc_args['limit'] ) ) {
+			$limit = intval( $assoc_args['limit'] );
+		}
+
+		$post_status = 'publish';
+
+		if ( ! empty( $assoc_args['status'] ) && 'draft' === $assoc_args['status'] ) {
+			$post_status = 'draft';
+		}
+
+		$this->write_log( '' );
+		$this->write_log( sprintf( 'Migrating the shortcodes from %s post type.', $this->post_type ) . "\n" );
+
+		$args = array(
+			'numberposts' => $limit,
+			'orderby'     => 'ID',
+			'order'       => 'ASC',
+			'post_type'   => $this->post_type,
+			'post_status' => $post_status,
+		);
+
+		$posts = get_posts( $args ); // @codingStandardsIgnoreLine: No need to maintain the caching here, so get_posts is okay to use.
+
+		$total_found   = count( $posts );
+		$success_count = 0;
+		$fail_count    = 0;
+
+		$this->write_log( sprintf( 'Found %d posts to be pass through migration', $total_found ) . "\n" );
+
+		foreach ( $posts as $post ) {
+			$post = (array) $post;
+
+			if ( ! $this->dry_run ) {
+
+				$new_post = array(
+					'ID'                => $post['ID'],
+					'post_content'      => get_post_meta( $post['ID'], '_divi_post_content', true ),
+					'post_modified'     => $post['post_modified'],
+					'post_modified_gmt' => $post['post_modified_gmt'],
+				);
+
+				$result = wp_update_post( $new_post, true );
+				if ( is_wp_error( $result ) ) {
+					$fail_count++;
+				} else {
+					$success_count++;
+				}
+			}
+		}
+
+		if ( $this->dry_run ) {
+
+			$this->success( sprintf( 'Total %d posts will be processed.', $total_found ) );
+			$this->warning( sprintf( 'Total %d posts will be failed to process.', $fail_count ) );
+
+		} else {
+
+			$this->success( sprintf( 'Total %d posts have been processed.', $success_count ) );
+			$this->warning( sprintf( 'Total %d posts have been failed to process.', $fail_count ) );
+		}
+
+		WP_CLI::line( '' );
+		WP_CLI::success( sprintf( 'Total time taken by this script: %s', human_time_diff( $start_time, time() ) ) . PHP_EOL . PHP_EOL );
+	}
+
+	/**
 	 * To convert the Divi shortcodes in post content.
 	 *
 	 * ## EXAMPLES
@@ -166,8 +273,7 @@ class Divi_Shortcode_Migration extends WP_CLI_Command {
 				if ( 'et_pb_video' === $shortcode_name ) {
 					// Youtube embeds.
 					$src = $attributes['src'];
-					if ( ! empty( $src ) ) {
-						$thumb             = ( empty( $attributes['image_src'] ) ) ? $src : 'http:' . $attributes['image_src'];
+					if ( ! empty( $src ) && false !== strpos( $src, 'youtube.com' ) ) {
 						$gb_youtube_block  = sprintf( '<!-- wp:core-embed/youtube {"url":"%s","type":"video","providerNameSlug":"youtube","className":"wp-embed-aspect-16-9 wp-has-aspect-ratio"} -->', $src );
 						$gb_youtube_block .= PHP_EOL;
 						$gb_youtube_block .= '<figure class="wp-block-embed-youtube wp-block-embed is-type-video is-provider-youtube wp-embed-aspect-16-9 wp-has-aspect-ratio"><div class="wp-block-embed__wrapper">';
@@ -182,26 +288,60 @@ class Divi_Shortcode_Migration extends WP_CLI_Command {
 							$shortcode = $match[0] . ']';
 						}
 						$post_content = str_replace( $shortcode, $gb_youtube_block, $post_content );
+					} elseif ( empty( $src ) && ! empty( $attributes['src_webm'] ) ) {
+						$src   = $attributes['src_webm'];
+						$thumb = ( empty( $attributes['image_src'] ) ) ? '' : 'poster="' . $attributes['image_src'] . '"';
+
+						$att_id = attachment_url_to_postid( $src );
+
+						if ( ! empty( $att_id ) ) {
+							$gb_video_block = sprintf( '<!-- wp:video {"id":%s} -->', $att_id );
+						} else {
+							$gb_video_block = '<!-- wp:video -->';
+						}
+
+						$gb_video_block .= PHP_EOL;
+						$gb_video_block .= '<figure class="wp-block-video">';
+						$gb_video_block .= PHP_EOL;
+						$gb_video_block .= sprintf( '<video controls src="%s" %s></video>', $src, $thumb );
+						$gb_video_block .= PHP_EOL;
+						$gb_video_block .= '</figure>';
+						$gb_video_block .= PHP_EOL;
+						$gb_video_block .= '<!-- /wp:video -->';
+
+						if ( false === strpos( $post_content, $shortcode ) ) {
+							$shortcode = $match[0] . ']';
+						}
+						$post_content = str_replace( $shortcode, $gb_video_block, $post_content );
 					}
 					$status = 'migrated';
 				} elseif ( 'et_pb_button' === $shortcode_name ) {
 
+					$target_url = '';
+					if ( ! empty( $attributes['url_new_window'] ) && 'on' === empty( $attributes['url_new_window'] ) ) {
+						$target_url = 'target="_blank"';
+					}
+
+					/**
+					 * @todo: @devik check if we can implement disable based on view point. i.e. for mobile,tablet,desktop
+					 * Divi example : ["disabled_on"]=> "off|off|off" [M|T|D]
+					 */
 					if ( ! empty( $attributes['button_text_color'] ) && ! empty( $attributes['button_bg_color'] ) ) {
 						$gb_button_block  = sprintf( '<!-- wp:button {"customBackgroundColor":"%s","customTextColor":"%s"} -->', $attributes['button_bg_color'], $attributes['button_text_color'] );
 						$gb_button_block .= PHP_EOL;
-						$gb_button_block .= sprintf( '<div class="wp-block-button"><a class="wp-block-button__link has-text-color has-background" href="%s" style="background-color:%s;color:%s">%s</a></div>', $attributes['button_url'], $attributes['button_bg_color'], $attributes['button_text_color'], $attributes['button_text'] );
+						$gb_button_block .= sprintf( '<div class="wp-block-button"><a class="wp-block-button__link has-text-color has-background" href="%s" %s style="background-color:%s;color:%s">%s</a></div>', $attributes['button_url'], $target_url, $attributes['button_bg_color'], $attributes['button_text_color'], $attributes['button_text'] );
 					} elseif ( ! empty( $attributes['button_text_color'] ) ) {
 						$gb_button_block  = sprintf( '<!-- wp:button {"customTextColor":"%s"} -->', $attributes['button_text_color'] );
 						$gb_button_block .= PHP_EOL;
-						$gb_button_block .= sprintf( '<div class="wp-block-button"><a class="wp-block-button__link has-text-color has-background" href="%s" style="color:%s">%s</a></div>', $attributes['button_url'], $attributes['button_text_color'], $attributes['button_text'] );
+						$gb_button_block .= sprintf( '<div class="wp-block-button"><a class="wp-block-button__link has-text-color has-background" href="%s" %s style="color:%s">%s</a></div>', $attributes['button_url'], $target_url, $attributes['button_text_color'], $attributes['button_text'] );
 					} elseif ( ! empty( $attributes['button_bg_color'] ) ) {
 						$gb_button_block  = sprintf( '<!-- wp:button {"customBackgroundColor":"%s"} -->', $attributes['button_bg_color'] );
 						$gb_button_block .= PHP_EOL;
-						$gb_button_block .= sprintf( '<div class="wp-block-button"><a class="wp-block-button__link has-text-color has-background" href="%s" style="background-color:%s;">%s</a></div>', $attributes['button_url'], $attributes['button_bg_color'], $attributes['button_text'] );
+						$gb_button_block .= sprintf( '<div class="wp-block-button"><a class="wp-block-button__link has-text-color has-background" href="%s" %s style="background-color:%s;">%s</a></div>', $attributes['button_url'], $target_url, $attributes['button_bg_color'], $attributes['button_text'] );
 					} else {
 						$gb_button_block  = '<!-- wp:button -->';
 						$gb_button_block .= PHP_EOL;
-						$gb_button_block .= sprintf( '<div class="wp-block-button"><a class="wp-block-button__link " href="%s">%s</a></div>', $attributes['button_url'], $attributes['button_text'] );
+						$gb_button_block .= sprintf( '<div class="wp-block-button"><a class="wp-block-button__link " href="%s" %s>%s</a></div>', $attributes['button_url'], $target_url, $attributes['button_text'] );
 					}
 					$gb_button_block .= PHP_EOL;
 					$gb_button_block .= '<!-- /wp:button -->';
@@ -215,12 +355,25 @@ class Divi_Shortcode_Migration extends WP_CLI_Command {
 
 					$att_id = attachment_url_to_postid( $attributes['src'] );
 
+					/**
+					 * Divi attributes: Skipped because of less support in Core gutenberg block.
+					 * force_fullwidth="on" positioning="absolute"
+					 * disabled_on="off|off|on"
+					 * module_id="img-test-ID" module_class="img-test-class"
+					 * border_color_all="#000000" border_width_all="3px"
+					 * border_color_right="#000000" border_width_right="9px"
+					 * custom_css_main_element="background:red;" custom_css_before="background:green;" custom_css_after="background:blue;"
+					 */
+
 					if ( $att_id ) {
 						$gb_attr   = sprintf( '"id":%s,"sizeSlug":"medium",', $att_id );
 						$style_str = '';
 
 						if ( empty( $attributes['align'] ) ) {
 							$attributes['align'] = 'left';
+						}
+						if ( empty( $attributes['alt'] ) ) {
+							$attributes['alt'] = '';
 						}
 						$gb_attr .= sprintf( '"align":"%s",', $attributes['align'] );
 						if ( ! empty( $attributes['max_width'] ) ) {
@@ -233,7 +386,7 @@ class Divi_Shortcode_Migration extends WP_CLI_Command {
 						}
 						$gb_img_block  = sprintf( '<!-- wp:image {%s} -->', trim( $gb_attr, ',' ) );
 						$gb_img_block .= PHP_EOL;
-						$gb_img_block .= sprintf( '<div class="wp-block-image"><figure class="align%s size-medium"><img src="%s" alt="" class="wp-image-%s"/></figure></div>', $attributes['align'], $attributes['src'], $att_id );
+						$gb_img_block .= sprintf( '<div class="wp-block-image"><figure class="align%s size-medium"><img src="%s" alt="%s" class="wp-image-%s"/></figure></div>', $attributes['align'], $attributes['src'], $attributes['alt'], $att_id );
 						$gb_img_block .= PHP_EOL;
 						$gb_img_block .= '<!-- /wp:image -->';
 						$status        = 'migrated';
@@ -253,7 +406,7 @@ class Divi_Shortcode_Migration extends WP_CLI_Command {
 
 						$gb_img_block  = sprintf( '<!-- wp:html {%s} -->', trim( $gb_attr, ',' ) );
 						$gb_img_block .= PHP_EOL;
-						$gb_img_block .= sprintf( '<div class="wp-block-image"><figure class="align%s size-medium"><img src="%s" alt=""/></figure></div>', $attributes['align'], $attributes['src'] );
+						$gb_img_block .= sprintf( '<div class="wp-block-image"><figure class="align%s size-medium"><img src="%s" alt="%s"/></figure></div>', $attributes['align'], $attributes['src'], $attributes['alt'] );
 						$gb_img_block .= PHP_EOL;
 						$gb_img_block .= '<!-- /wp:html -->';
 						$status        = 'migrated';
