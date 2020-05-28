@@ -379,7 +379,7 @@ class Divi_Shortcode_Migration extends WP_CLI_Command {
 							$comment_status = '';
 							$comment_count  = get_comment_count( $post['ID'] );
 
-							if ( $comment_count['approved'] >= 0 ) {
+							if ( $comment_count['approved'] > 0 ) {
 								$comment_status = $comment_count['approved'] . ' Comments';
 							}
 
