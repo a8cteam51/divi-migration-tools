@@ -13,8 +13,8 @@ class Divi_Shortcode_Migration extends WP_CLI_Command {
 	private $dry_run   = true;
 	private $post_type = 'post';
 
-	private $migratable_shortcodes = array( 'et_pb_video', 'et_pb_button', 'et_pb_image', 'et_pb_fullwidth_image', 'et_pb_post_title' );
-	private $clearable_shortcodes  = array( 'et_pb_section', 'et_pb_row', 'et_pb_column', 'et_pb_text', 'et_pb_fullwidth_header', 'et_pb_code', 'et_pb_cta', 'et_pb_row_inner', 'et_pb_column_inner', 'et_pb_sidebar', 'et_pb_slider', 'et_pb_slide', 'et_pb_line_break_holder', 'et_pb_divider', 'et_pb_toggle', 'et_pb_fullwidth_code' );
+	private $migratable_shortcodes = array( 'et_pb_video', 'et_pb_button', 'et_pb_image', 'et_pb_fullwidth_image', 'et_pb_post_title', 'et_pb_divider' );
+	private $clearable_shortcodes  = array( 'et_pb_section', 'et_pb_row', 'et_pb_column', 'et_pb_text', 'et_pb_fullwidth_header', 'et_pb_code', 'et_pb_cta', 'et_pb_row_inner', 'et_pb_column_inner', 'et_pb_sidebar', 'et_pb_slider', 'et_pb_slide', 'et_pb_line_break_holder', 'et_pb_toggle', 'et_pb_fullwidth_code' );
 	private $skippable_shortcodes  = array( 'et_social_follow', 'embed', 'caption', 'toc', 'Sarcastic', 'gallery', 'Tweet', 'Proof', 'et_pb_social_media_follow', 'et_pb_social_media_follow_network', 'et_pb_testimonial', 'et_pb_contact_form', 'et_pb_contact_field', 'et_pb_blog', 'et_pb_pricing_tables', 'et_pb_blurb', 'et_pb_video_slider', 'et_pb_video_slider_item', 'et_pb_team_member', 'et_pb_tabs', 'et_pb_tab' );
 
 	/**
@@ -270,7 +270,33 @@ class Divi_Shortcode_Migration extends WP_CLI_Command {
 				// Migrate the shortcodes.
 				$attributes = shortcode_parse_atts( $match[0] );
 
-				if ( 'et_pb_post_title' === $shortcode_name ) {
+				if ( 'et_pb_divider' === $shortcode_name ) {
+					$gb_divider_block = '';
+
+					$class_str = 'wp-block-separator is-style-wide';
+					$gb_attr   = '{"className":"is-style-wide"}';
+					$hr_style  = '';
+
+					if ( ! empty( $attributes['color'] ) ) {
+						$class_str .= ' has-text-color has-background';
+						$hr_style   = sprintf( 'style="background-color:%s;color:%s"', $attributes['color'], $attributes['color'] );
+						$gb_attr    = sprintf( '{"customColor":"%s","className":"is-style-wide"}', $attributes['color'] );
+					}
+
+					$gb_divider_block  = sprintf( '<!-- wp:separator %s -->', $gb_attr );
+					$gb_divider_block .= PHP_EOL;
+					$gb_divider_block .= sprintf( '<hr class="%s" %s/>', $class_str, $hr_style );
+					$gb_divider_block .= PHP_EOL;
+					$gb_divider_block .= '<!-- /wp:separator -->';
+
+					if ( false === strpos( $post_content, $shortcode ) ) {
+						$shortcode = $match[0] . ']';
+					}
+					$post_content = str_replace( $shortcode, $gb_divider_block, $post_content );
+
+					$status = 'migrated';
+
+				} elseif ( 'et_pb_post_title' === $shortcode_name ) {
 
 					$gb_title_block = '';
 					if ( 'off' !== $attributes['title'] ) {
