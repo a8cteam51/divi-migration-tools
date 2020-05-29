@@ -13,8 +13,8 @@ class Divi_Shortcode_Migration extends WP_CLI_Command {
 	private $dry_run   = true;
 	private $post_type = 'post';
 
-	private $migratable_shortcodes = array( 'et_pb_video', 'et_pb_button', 'et_pb_image', 'et_pb_fullwidth_image' );
-	private $clearable_shortcodes  = array( 'et_pb_section', 'et_pb_row', 'et_pb_column', 'et_pb_text', 'et_pb_fullwidth_header', 'et_pb_code', 'et_pb_cta', 'et_pb_row_inner', 'et_pb_column_inner', 'et_pb_sidebar', 'et_pb_slider', 'et_pb_slide', 'et_pb_post_title', 'et_pb_line_break_holder', 'et_pb_divider', 'et_pb_toggle', 'et_pb_fullwidth_code' );
+	private $migratable_shortcodes = array( 'et_pb_video', 'et_pb_button', 'et_pb_image', 'et_pb_fullwidth_image', 'et_pb_post_title' );
+	private $clearable_shortcodes  = array( 'et_pb_section', 'et_pb_row', 'et_pb_column', 'et_pb_text', 'et_pb_fullwidth_header', 'et_pb_code', 'et_pb_cta', 'et_pb_row_inner', 'et_pb_column_inner', 'et_pb_sidebar', 'et_pb_slider', 'et_pb_slide', 'et_pb_line_break_holder', 'et_pb_divider', 'et_pb_toggle', 'et_pb_fullwidth_code' );
 	private $skippable_shortcodes  = array( 'et_social_follow', 'embed', 'caption', 'toc', 'Sarcastic', 'gallery', 'Tweet', 'Proof', 'et_pb_social_media_follow', 'et_pb_social_media_follow_network', 'et_pb_testimonial', 'et_pb_contact_form', 'et_pb_contact_field', 'et_pb_blog', 'et_pb_pricing_tables', 'et_pb_blurb', 'et_pb_video_slider', 'et_pb_video_slider_item', 'et_pb_team_member', 'et_pb_tabs', 'et_pb_tab' );
 
 	/**
@@ -270,7 +270,194 @@ class Divi_Shortcode_Migration extends WP_CLI_Command {
 				// Migrate the shortcodes.
 				$attributes = shortcode_parse_atts( $match[0] );
 
-				if ( 'et_pb_video' === $shortcode_name ) {
+				if ( 'et_pb_post_title' === $shortcode_name ) {
+
+					$gb_title_block = '';
+					if ( 'off' !== $attributes['title'] ) {
+						// Title block
+						$gb_attr   = '';
+						$style_str = '';
+						$h_classes = '';
+						$h_level   = 'h2';
+						$h_text    = $post['post_title'];
+
+						if ( ! empty( $attributes['title_level'] ) && in_array( $attributes['title_level'], array( 'h1', 'h2', 'h3', 'h4', 'h5', 'h6' ), true ) ) {
+							$h_level = $attributes['title_level'];
+						}
+
+						if ( ! empty( $attributes['title_font'] ) ) {
+							$font_split = explode( '|', $attributes['title_font'] );
+
+							$attributes['title_font'] = $font_split[0];
+
+							$gb_attr   .= sprintf( '"fontFamily":"%s",', trim( $attributes['title_font'], '|' ) );
+							$h_classes .= 'has-custom-font ';
+							$style_str .= sprintf( 'font-family:%s;', trim( $attributes['title_font'], '|' ) );
+						}
+						if ( ! empty( $attributes['title_text_color'] ) ) {
+							$gb_attr   .= sprintf( '"customTextColor":"%s",', $attributes['title_text_color'] );
+							$h_classes .= 'has-text-color ';
+							$style_str .= sprintf( 'color:%s;', $attributes['title_text_color'] );
+						}
+						if ( ! empty( $attributes['title_font_size'] ) ) {
+							$gb_attr   .= sprintf( '"customFontSize":%s,', str_replace( 'px', '', $attributes['title_font_size'] ) );
+							$style_str .= sprintf( 'font-size:%s;', $attributes['title_font_size'] );
+						}
+						if ( ! empty( $attributes['title_line_height'] ) ) {
+							$gb_attr   .= sprintf( '"lineHeight":%s,', str_replace( 'em', '', $attributes['title_line_height'] ) );
+							$h_classes .= 'has-custom-lineheight ';
+							$style_str .= sprintf( 'line-height:%s;', str_replace( 'em', '', $attributes['title_line_height'] ) );
+						}
+
+						if ( ! empty( $gb_attr ) ) {
+							$gb_attr .= '"className":"' . trim( $h_classes ) . '",';
+							$gb_attr  = '{' . trim( $gb_attr, ',' ) . '}';
+						}
+
+						if ( ! empty( $h_classes ) ) {
+							$h_classes = 'class="' . trim( $h_classes ) . '"';
+						}
+
+						if ( ! empty( $style_str ) ) {
+							$style_str = 'style="' . trim( $style_str, ';' ) . '"';
+						}
+
+						if ( ! empty( $attributes['link_option_url'] ) ) {
+							$target_url = '';
+							if ( ! empty( $attributes['link_option_url_new_window'] ) && 'on' === $attributes['link_option_url_new_window'] ) {
+								$target_url = 'target="_blank"';
+							}
+							$h_text = sprintf( '<a href="%s" %s>%s</a>', $attributes['link_option_url'], $target_url, $h_text );
+						}
+
+						$gb_title_block  = sprintf( '<!-- wp:heading %s -->', $gb_attr );
+						$gb_title_block .= PHP_EOL;
+						$gb_title_block .= sprintf( '<%s %s %s>', $h_level, $h_classes, $style_str );
+						$gb_title_block .= PHP_EOL;
+						$gb_title_block .= $h_text;
+						$gb_title_block .= PHP_EOL;
+						$gb_title_block .= sprintf( '</%s>', $h_level );
+						$gb_title_block .= PHP_EOL;
+						$gb_title_block .= '<!-- /wp:heading -->';
+					}
+
+					$gb_author_line_block = '';
+					if ( 'off' !== $attributes['meta'] ) {
+						// Aithor by line: paragraph block
+
+						$author_line = '';
+						if ( 'off' !== $attributes['author'] ) {
+							$author      = get_user_by( 'id', $post['post_author'] );
+							$author_line = sprintf( 'by <a href="%s">%s</a>', get_author_posts_url( $post['post_author'] ), $author->display_name );
+						}
+						if ( 'off' !== $attributes['date'] ) {
+							if ( ! empty( $author_line ) ) {
+								$author_line .= ' | ';
+							}
+							$author_line .= date( 'M j, Y', strtotime( $post['post_date'] ) );
+						}
+						if ( 'off' !== $attributes['categories'] ) {
+							if ( ! empty( $author_line ) ) {
+								$author_line .= ' | ';
+							}
+
+							$terms_string = '';
+
+							$terms = get_the_terms( $post['ID'], 'category' );
+							if ( ! empty( $terms ) ) {
+								foreach ( $terms as $term ) {
+									$terms_string .= sprintf( '<a href="%s">%s</a>, ', get_term_link( $term->term_id ), $term->name );
+								}
+							}
+
+							$author_line .= $terms_string;
+						}
+						if ( 'off' !== $attributes['comments'] ) {
+							if ( ! empty( $author_line ) ) {
+								$author_line .= ' | ';
+							}
+							$comment_status = '';
+							$comment_count  = get_comment_count( $post['ID'] );
+
+							if ( $comment_count['approved'] > 0 ) {
+								$comment_status = $comment_count['approved'] . ' Comments';
+							}
+
+							$author_line .= $comment_status;
+						}
+
+						if ( ! empty( $author_line ) ) {
+							$gb_author_line_block  = sprintf( '<!-- wp:paragraph -->' );
+							$gb_author_line_block .= PHP_EOL;
+							$gb_author_line_block .= '<p>' . $author_line . '</p>';
+							$gb_author_line_block .= PHP_EOL;
+							$gb_author_line_block .= '<!-- /wp:paragraph -->';
+						}
+					}
+
+					$gb_img_block = '';
+					if ( 'off' !== $attributes['featured_image'] ) {
+						// Featured image block
+						$att_id = get_post_meta( $post['ID'], '_thumbnail_id', true );
+
+						$gb_attr   = sprintf( '"id":%s,"sizeSlug":"medium",', $att_id );
+						$style_str = '';
+
+						$gb_img_block  = sprintf( '<!-- wp:image {%s} -->', trim( $gb_attr, ',' ) );
+						$gb_img_block .= PHP_EOL;
+						$gb_img_block .= sprintf( '<div class="wp-block-image"><figure class="align-left size-medium"><img src="%s" alt="" class="wp-image-%s"/></figure></div>', wp_get_attachment_url( $att_id ), $att_id );
+						$gb_img_block .= PHP_EOL;
+						$gb_img_block .= '<!-- /wp:image -->';
+					}
+
+					// Bind group block
+					$gb_attr   = '';
+					$style_str = '';
+					$div_class = 'class="wp-block-group"';
+
+					if ( ! empty( $attributes['background_color'] ) ) {
+						$gb_attr   .= sprintf( '{"customBackgroundColor":"%s"} ', $attributes['background_color'] );
+						$style_str .= sprintf( 'style="background-color:%s;"', $attributes['background_color'] );
+						$div_class  = 'class="wp-block-group has-background"';
+					}
+
+					$gb_group_block  = sprintf( '<!-- wp:group %s-->', $gb_attr );
+					$gb_group_block .= PHP_EOL;
+					$gb_group_block .= sprintf( '<div %s %s><div class="wp-block-group__inner-container">', $div_class, $style_str );
+					$gb_group_block .= PHP_EOL;
+
+					if ( ! empty( $gb_img_block ) && 'above' === $attributes['featured_placement'] ) {
+						$gb_group_block .= $gb_img_block;
+						$gb_group_block .= PHP_EOL;
+					}
+
+					if ( ! empty( $gb_title_block ) ) {
+						$gb_group_block .= $gb_title_block;
+						$gb_group_block .= PHP_EOL;
+					}
+
+					if ( ! empty( $gb_author_line_block ) ) {
+						$gb_group_block .= $gb_author_line_block;
+						$gb_group_block .= PHP_EOL;
+					}
+
+					if ( ! empty( $gb_img_block ) && 'above' !== $attributes['featured_placement'] ) {
+						$gb_group_block .= $gb_img_block;
+						$gb_group_block .= PHP_EOL;
+					}
+
+					$gb_group_block .= '</div></div>';
+					$gb_group_block .= PHP_EOL;
+					$gb_group_block .= '<!-- /wp:group -->';
+
+					if ( false === strpos( $post_content, $shortcode ) ) {
+						$shortcode = $match[0] . ']';
+					}
+					$post_content = str_replace( $shortcode, $gb_group_block, $post_content );
+
+					$status = 'migrated';
+
+				} elseif ( 'et_pb_video' === $shortcode_name ) {
 					// Youtube embeds.
 					$src = $attributes['src'];
 					if ( ! empty( $src ) && false !== strpos( $src, 'youtube.com' ) ) {
@@ -288,6 +475,8 @@ class Divi_Shortcode_Migration extends WP_CLI_Command {
 							$shortcode = $match[0] . ']';
 						}
 						$post_content = str_replace( $shortcode, $gb_youtube_block, $post_content );
+
+						$status = 'migrated';
 					} elseif ( empty( $src ) && ! empty( $attributes['src_webm'] ) ) {
 						$src   = $attributes['src_webm'];
 						$thumb = ( empty( $attributes['image_src'] ) ) ? '' : 'poster="' . $attributes['image_src'] . '"';
@@ -313,12 +502,13 @@ class Divi_Shortcode_Migration extends WP_CLI_Command {
 							$shortcode = $match[0] . ']';
 						}
 						$post_content = str_replace( $shortcode, $gb_video_block, $post_content );
+
+						$status = 'migrated';
 					}
-					$status = 'migrated';
 				} elseif ( 'et_pb_button' === $shortcode_name ) {
 
 					$target_url = '';
-					if ( ! empty( $attributes['url_new_window'] ) && 'on' === empty( $attributes['url_new_window'] ) ) {
+					if ( ! empty( $attributes['url_new_window'] ) && 'on' === $attributes['url_new_window'] ) {
 						$target_url = 'target="_blank"';
 					}
 
