@@ -326,10 +326,10 @@ class Divi_Shortcode_Migration extends WP_CLI_Command {
 
 						if ( ! empty( $attributes['header_level'] ) && in_array( $attributes['header_level'], array( 'h1', 'h2', 'h3', 'h4', 'h5', 'h6' ), true ) ) {
 							$h_level = $attributes['header_level'];
-						}
 
-						if ( 'h2' !== $attributes['header_level'] ) {
-							$gb_attr = sprintf( '"level":%s,', str_replace( 'h', '', $attributes['header_level'] ) );
+							if ( 'h2' !== $attributes['header_level'] ) {
+								$gb_attr = sprintf( '"level":%s,', str_replace( 'h', '', $attributes['header_level'] ) );
+							}
 						}
 
 						if ( ! empty( $attributes['url'] ) ) {
@@ -415,6 +415,10 @@ class Divi_Shortcode_Migration extends WP_CLI_Command {
 
 						if ( ! empty( $attributes['title_level'] ) && in_array( $attributes['title_level'], array( 'h1', 'h2', 'h3', 'h4', 'h5', 'h6' ), true ) ) {
 							$h_level = $attributes['title_level'];
+
+							if ( 'h2' !== $attributes['title_level'] ) {
+								$gb_attr = sprintf( '"level":%s,', str_replace( 'h', '', $attributes['title_level'] ) );
+							}
 						}
 
 						if ( ! empty( $attributes['title_font'] ) ) {
