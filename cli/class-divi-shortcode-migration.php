@@ -33,7 +33,7 @@ class Divi_Shortcode_Migration extends WP_CLI_Command {
 	 */
 	public function reset_divi_post_content( $args, $assoc_args ) {
 
-		if ( ! in_array( $assoc_args['post-type'], get_post_types( array( 'public' => true ) ), true ) ) {
+		if ( ! empty( $assoc_args['post-type'] ) && ! in_array( $assoc_args['post-type'], get_post_types( array( 'public' => true ) ), true ) ) {
 			$this->error( 'You have called the command divi-cli:migrate-shortcodes with wrong/unsupported post-type.' . "\n" );
 		}
 
@@ -144,7 +144,7 @@ class Divi_Shortcode_Migration extends WP_CLI_Command {
 	 */
 	public function divi_migrate_shortcodes( $args, $assoc_args ) {
 
-		if ( ! in_array( $assoc_args['post-type'], get_post_types( array( 'public' => true ) ), true ) ) {
+		if ( ! empty( $assoc_args['post-type'] ) && ! in_array( $assoc_args['post-type'], get_post_types( array( 'public' => true ) ), true ) ) {
 			$this->error( 'You have called the command divi-cli:migrate-shortcodes with wrong/unsupported post-type.' . "\n" );
 		}
 
@@ -811,10 +811,13 @@ class Divi_Shortcode_Migration extends WP_CLI_Command {
 
 		$csv_generated = fclose( $file ); // @codingStandardsIgnoreLine
 
+		$source_file_url  = str_replace( $uploads['subdir'], '', $uploads['url'] );
+		$source_file_url .= '/divi-migration-logs/' . $file_name;
+
 		if ( $csv_generated ) {
-			$this->write_log( sprintf( 'Log created successfully - %s', $file_name ) );
+			$this->write_log( sprintf( 'Log created successfully - %s', $source_file_url ) );
 		} else {
-			$this->warning( sprintf( 'Failed to write the logs - %s', $file_name ) );
+			$this->warning( sprintf( 'Failed to write the logs - %s', $source_file_url ) );
 		}
 	}
 
