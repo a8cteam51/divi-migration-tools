@@ -36,11 +36,7 @@
     * [et_social_follow]
         * This shortcode is coming though a plugin called `Monarch` and it will work independently without Divi
  
-    * [et_pb_tabs], [et_pb_tab], [et_pb_testimonial], [et_pb_contact_form] , [et_pb_contact_field], [et_pb_video_slider], [et_pb_video_slider_item]
-        * These shortcodes are easy to migrate but it needs custom Gutenberg blocks. We can have these needful blocks from this [plugin](https://wordpress.org/plugins/kadence-blocks/).
-        * But again these posts are very less. So, installing this [plugin](https://wordpress.org/plugins/kadence-blocks/) and manual update will be faster.
-
-    * [et_pb_social_media_follow], [et_pb_social_media_follow_network], [et_pb_blog], [et_pb_pricing_tables], [et_pb_team_member], [et_pb_pricing_tables]
+    * [et_pb_tabs], [et_pb_tab], [et_pb_testimonial], [et_pb_contact_form] , [et_pb_contact_field], [et_pb_video_slider], [et_pb_video_slider_item], [et_pb_social_media_follow], [et_pb_social_media_follow_network], [et_pb_blog], [et_pb_pricing_tables], [et_pb_team_member], [et_pb_pricing_tables]
         * These shortcodes needs to be fixed manually by adding needful content markup.
 
 ---
