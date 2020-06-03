@@ -13,9 +13,9 @@ class Divi_Shortcode_Migration extends WP_CLI_Command {
 	private $dry_run   = true;
 	private $post_type = 'post';
 
-	private $migratable_shortcodes = array( 'et_pb_video', 'et_pb_button', 'et_pb_image', 'et_pb_fullwidth_image', 'et_pb_post_title', 'et_pb_divider' );
+	private $migratable_shortcodes = array( 'et_pb_video', 'et_pb_button', 'et_pb_image', 'et_pb_fullwidth_image', 'et_pb_post_title', 'et_pb_divider', 'et_pb_blurb' );
 	private $clearable_shortcodes  = array( 'et_pb_section', 'et_pb_row', 'et_pb_column', 'et_pb_text', 'et_pb_fullwidth_header', 'et_pb_code', 'et_pb_cta', 'et_pb_row_inner', 'et_pb_column_inner', 'et_pb_sidebar', 'et_pb_slider', 'et_pb_slide', 'et_pb_line_break_holder', 'et_pb_toggle', 'et_pb_fullwidth_code' );
-	private $skippable_shortcodes  = array( 'et_social_follow', 'embed', 'caption', 'toc', 'Sarcastic', 'gallery', 'Tweet', 'Proof', 'et_pb_social_media_follow', 'et_pb_social_media_follow_network', 'et_pb_testimonial', 'et_pb_contact_form', 'et_pb_contact_field', 'et_pb_blog', 'et_pb_pricing_tables', 'et_pb_blurb', 'et_pb_video_slider', 'et_pb_video_slider_item', 'et_pb_team_member', 'et_pb_tabs', 'et_pb_tab' );
+	private $skippable_shortcodes  = array( 'et_social_follow', 'embed', 'caption', 'toc', 'Sarcastic', 'gallery', 'Tweet', 'Proof', 'et_pb_social_media_follow', 'et_pb_social_media_follow_network', 'et_pb_testimonial', 'et_pb_contact_form', 'et_pb_contact_field', 'et_pb_blog', 'et_pb_pricing_tables', 'et_pb_video_slider', 'et_pb_video_slider_item', 'et_pb_team_member', 'et_pb_tabs', 'et_pb_tab' );
 
 	/**
 	 * To reset Divi post Content.
@@ -33,6 +33,10 @@ class Divi_Shortcode_Migration extends WP_CLI_Command {
 	 */
 	public function reset_divi_post_content( $args, $assoc_args ) {
 
+		if ( ! in_array( $assoc_args['post-type'], get_post_types( array( 'public' => true ) ), true ) ) {
+			$this->error( 'You have called the command divi-cli:migrate-shortcodes with wrong/unsupported post-type.' . "\n" );
+		}
+
 		// Starting time of the script.
 		$start_time = time();
 
@@ -46,7 +50,7 @@ class Divi_Shortcode_Migration extends WP_CLI_Command {
 			$this->dry_run = false;
 		}
 
-		if ( ! empty( $assoc_args['post-type'] ) && in_array( $assoc_args['post-type'], array( 'page', 'project' ), true ) ) {
+		if ( ! empty( $assoc_args['post-type'] ) ) {
 
 			$this->post_type = $assoc_args['post-type'];
 		}
@@ -140,6 +144,10 @@ class Divi_Shortcode_Migration extends WP_CLI_Command {
 	 */
 	public function divi_migrate_shortcodes( $args, $assoc_args ) {
 
+		if ( ! in_array( $assoc_args['post-type'], get_post_types( array( 'public' => true ) ), true ) ) {
+			$this->error( 'You have called the command divi-cli:migrate-shortcodes with wrong/unsupported post-type.' . "\n" );
+		}
+
 		// Starting time of the script.
 		$start_time = time();
 
@@ -153,7 +161,7 @@ class Divi_Shortcode_Migration extends WP_CLI_Command {
 			$this->dry_run = false;
 		}
 
-		if ( ! empty( $assoc_args['post-type'] ) && in_array( $assoc_args['post-type'], array( 'page', 'project' ), true ) ) {
+		if ( ! empty( $assoc_args['post-type'] ) ) {
 
 			$this->post_type = $assoc_args['post-type'];
 		}
@@ -270,9 +278,107 @@ class Divi_Shortcode_Migration extends WP_CLI_Command {
 				// Migrate the shortcodes.
 				$attributes = shortcode_parse_atts( $match[0] );
 
-				if ( 'et_pb_divider' === $shortcode_name ) {
-					$gb_divider_block = '';
+				if ( 'et_pb_blurb' === $shortcode_name ) {
 
+					$gb_img_block = '';
+					if ( ! empty( $attributes['image'] ) ) {
+						$att_id = attachment_url_to_postid( $attributes['image'] );
+
+						if ( $att_id ) {
+							$gb_attr   = sprintf( '"id":%s,"sizeSlug":"medium",', $att_id );
+							$style_str = '';
+
+							if ( empty( $attributes['icon_alignment'] ) ) {
+								$attributes['align'] = 'left';
+							}
+							$gb_attr .= sprintf( '"align":"%s",', $attributes['icon_alignment'] );
+
+							$gb_img_block  = sprintf( '<!-- wp:image {%s} -->', trim( $gb_attr, ',' ) );
+							$gb_img_block .= PHP_EOL;
+							$gb_img_block .= sprintf( '<figure class="wp-block-image align%s size-medium"><img src="%s" class="wp-image-%s"/></figure>', $attributes['icon_alignment'], $attributes['image'], $att_id );
+							$gb_img_block .= PHP_EOL;
+							$gb_img_block .= '<!-- /wp:image -->';
+
+						} else {
+							$gb_attr = sprintf( 'sizeSlug":"medium",' );
+
+							if ( empty( $attributes['align'] ) ) {
+								$attributes['align'] = 'left';
+							}
+							$gb_attr .= sprintf( '"align":"%s",', $attributes['align'] );
+
+							$gb_img_block  = sprintf( '<!-- wp:image {%s} -->', trim( $gb_attr, ',' ) );
+							$gb_img_block .= PHP_EOL;
+							$gb_img_block .= sprintf( '<figure class="wp-block-image align%s size-medium"><img src="%s"/></figure>', $attributes['icon_alignment'], $attributes['image'] );
+							$gb_img_block .= PHP_EOL;
+							$gb_img_block .= '<!-- /wp:image -->';
+						}
+					}
+
+					$gb_heading_block = '';
+					if ( ! empty( $attributes['title'] ) ) {
+						// Title block
+						$gb_attr   = '';
+						$style_str = '';
+						$h_classes = '';
+						$h_level   = 'h4';
+						$h_text    = $attributes['title'];
+
+						if ( ! empty( $attributes['header_level'] ) && in_array( $attributes['header_level'], array( 'h1', 'h2', 'h3', 'h4', 'h5', 'h6' ), true ) ) {
+							$h_level = $attributes['header_level'];
+						}
+
+						if ( 'h2' !== $attributes['header_level'] ) {
+							$gb_attr = sprintf( '"level":%s,', str_replace( 'h', '', $attributes['header_level'] ) );
+						}
+
+						if ( ! empty( $attributes['url'] ) ) {
+							$target_url = '';
+							if ( ! empty( $attributes['url_new_window'] ) && 'on' === $attributes['url_new_window'] ) {
+								$target_url = 'target="_blank"';
+							}
+							$h_text = sprintf( '<a href="%s" %s>%s</a>', $attributes['url'], $target_url, $h_text );
+						}
+
+						$gb_heading_block  = sprintf( '<!-- wp:heading %s -->', $gb_attr );
+						$gb_heading_block .= PHP_EOL;
+						$gb_heading_block .= sprintf( '<%s>', $h_level, $h_classes, $style_str );
+						$gb_heading_block .= PHP_EOL;
+						$gb_heading_block .= $h_text;
+						$gb_heading_block .= PHP_EOL;
+						$gb_heading_block .= sprintf( '</%s>', $h_level );
+						$gb_heading_block .= PHP_EOL;
+						$gb_heading_block .= '<!-- /wp:heading -->';
+					}
+
+					// Bind blurb block
+					$gb_blurb_block = '';
+					if ( ! empty( $gb_img_block ) ) {
+						$gb_blurb_block = $gb_img_block;
+					}
+
+					if ( ! empty( $gb_heading_block ) ) {
+
+						if ( ! empty( $gb_blurb_block ) ) {
+							$gb_blurb_block .= PHP_EOL;
+						}
+
+						$gb_blurb_block .= $gb_heading_block;
+						$gb_blurb_block .= PHP_EOL;
+					}
+
+					if ( ! empty( $gb_blurb_block ) ) {
+
+						if ( false === strpos( $post_content, $shortcode ) ) {
+							$shortcode = $match[0] . ']';
+						}
+
+						$post_content = str_replace( $shortcode, $gb_blurb_block, $post_content );
+						$post_content = str_replace( '[/et_pb_blurb]', '', $post_content );
+
+						$status = 'migrated';
+					}
+				} elseif ( 'et_pb_divider' === $shortcode_name ) {
 					$class_str = 'wp-block-separator is-style-wide';
 					$gb_attr   = '{"className":"is-style-wide"}';
 					$hr_style  = '';
@@ -332,7 +438,7 @@ class Divi_Shortcode_Migration extends WP_CLI_Command {
 						if ( ! empty( $attributes['title_line_height'] ) ) {
 							$gb_attr   .= sprintf( '"lineHeight":%s,', str_replace( 'em', '', $attributes['title_line_height'] ) );
 							$h_classes .= 'has-custom-lineheight ';
-							$style_str .= sprintf( 'line-height:%s;', str_replace( 'em', '', $attributes['title_line_height'] ) );
+							$style_str .= sprintf( 'line-height:%s;', $attributes['title_line_height'] );
 						}
 
 						if ( ! empty( $gb_attr ) ) {
@@ -431,7 +537,7 @@ class Divi_Shortcode_Migration extends WP_CLI_Command {
 
 						$gb_img_block  = sprintf( '<!-- wp:image {%s} -->', trim( $gb_attr, ',' ) );
 						$gb_img_block .= PHP_EOL;
-						$gb_img_block .= sprintf( '<div class="wp-block-image"><figure class="align-left size-medium"><img src="%s" alt="" class="wp-image-%s"/></figure></div>', wp_get_attachment_url( $att_id ), $att_id );
+						$gb_img_block .= sprintf( '<figure class="wp-block-image align-left size-medium"><img src="%s" alt="" class="wp-image-%s"/></figure>', wp_get_attachment_url( $att_id ), $att_id );
 						$gb_img_block .= PHP_EOL;
 						$gb_img_block .= '<!-- /wp:image -->';
 					}
@@ -602,7 +708,7 @@ class Divi_Shortcode_Migration extends WP_CLI_Command {
 						}
 						$gb_img_block  = sprintf( '<!-- wp:image {%s} -->', trim( $gb_attr, ',' ) );
 						$gb_img_block .= PHP_EOL;
-						$gb_img_block .= sprintf( '<div class="wp-block-image"><figure class="align%s size-medium"><img src="%s" alt="%s" class="wp-image-%s"/></figure></div>', $attributes['align'], $attributes['src'], $attributes['alt'], $att_id );
+						$gb_img_block .= sprintf( '<figure class="wp-block-image align%s size-medium"><img src="%s" alt="%s" class="wp-image-%s"/></figure>', $attributes['align'], $attributes['src'], $attributes['alt'], $att_id );
 						$gb_img_block .= PHP_EOL;
 						$gb_img_block .= '<!-- /wp:image -->';
 						$status        = 'migrated';
@@ -613,18 +719,18 @@ class Divi_Shortcode_Migration extends WP_CLI_Command {
 						$post_content = str_replace( $shortcode, $gb_img_block, $post_content );
 
 					} else {
-						$gb_attr = sprintf( 'sizeSlug":"medium",', $att_id );
+						$gb_attr = sprintf( 'sizeSlug":"medium",' );
 
 						if ( empty( $attributes['align'] ) ) {
 							$attributes['align'] = 'left';
 						}
 						$gb_attr .= sprintf( '"align":"%s",', $attributes['align'] );
 
-						$gb_img_block  = sprintf( '<!-- wp:html {%s} -->', trim( $gb_attr, ',' ) );
+						$gb_img_block  = sprintf( '<!-- wp:image {%s} -->', trim( $gb_attr, ',' ) );
 						$gb_img_block .= PHP_EOL;
-						$gb_img_block .= sprintf( '<div class="wp-block-image"><figure class="align%s size-medium"><img src="%s" alt="%s"/></figure></div>', $attributes['align'], $attributes['src'], $attributes['alt'] );
+						$gb_img_block .= sprintf( '<figure class="wp-block-image align%s size-medium"><img src="%s" alt="%s"/></figure>', $attributes['align'], $attributes['src'], $attributes['alt'] );
 						$gb_img_block .= PHP_EOL;
-						$gb_img_block .= '<!-- /wp:html -->';
+						$gb_img_block .= '<!-- /wp:image -->';
 						$status        = 'migrated';
 
 						if ( false === strpos( $post_content, $shortcode ) ) {
