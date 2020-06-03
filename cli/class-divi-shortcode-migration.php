@@ -22,9 +22,9 @@ class Divi_Shortcode_Migration extends WP_CLI_Command {
 	 *
 	 * ## EXAMPLES
 	 *
-	 *   wp divi-cli reset-post-content
+	 *   wp divi-cli reset-divi-content
 	 *
-	 * @subcommand reset-post-content
+	 * @subcommand reset-divi-content
 	 *
 	 * @param array $args Store all the positional arguments.
 	 * @param array $assoc_args Store all the associative arguments.
