@@ -138,7 +138,7 @@ class Divi_Shortcode_Migration extends WP_CLI_Command {
 	 *
 	 * @throws \Exception If any errors.
 	 */
-	public function sop_divi_migrate_shortcodes( $args, $assoc_args ) {
+	public function divi_migrate_shortcodes( $args, $assoc_args ) {
 
 		// Starting time of the script.
 		$start_time = time();
@@ -161,7 +161,7 @@ class Divi_Shortcode_Migration extends WP_CLI_Command {
 		if ( $this->dry_run ) {
 
 			$this->write_log( '' );
-			$this->warning( 'You have called the command sop-divi:migrate-shortcodes in dry run mode.' . "\n" );
+			$this->warning( 'You have called the command divi-cli:migrate-shortcodes in dry run mode.' . "\n" );
 		}
 
 		$limit = -1;
@@ -200,7 +200,7 @@ class Divi_Shortcode_Migration extends WP_CLI_Command {
 
 		foreach ( $posts as $post ) {
 			$post           = (array) $post;
-			$migrate_status = $this->sop_divi_migrate_single_post_shortcode( $post, $detail_log );
+			$migrate_status = $this->divi_migrate_single_post_shortcode( $post, $detail_log );
 
 			if ( $migrate_status ) {
 				$success_count++;
@@ -236,7 +236,7 @@ class Divi_Shortcode_Migration extends WP_CLI_Command {
 	 *
 	 * @return bool
 	 */
-	private function sop_divi_migrate_single_post_shortcode( $post, &$logs ) {
+	private function divi_migrate_single_post_shortcode( $post, &$logs ) {
 		$post_content = $post['post_content'];
 
 		$old_content = get_post_meta( $post['ID'], '_divi_post_content', true );
