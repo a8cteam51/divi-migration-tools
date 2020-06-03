@@ -22,9 +22,9 @@ class Divi_Shortcode_Migration extends WP_CLI_Command {
 	 *
 	 * ## EXAMPLES
 	 *
-	 *   wp divi-cli reset-post-content
+	 *   wp divi-cli reset-divi-content
 	 *
-	 * @subcommand reset-post-content
+	 * @subcommand reset-divi-content
 	 *
 	 * @param array $args Store all the positional arguments.
 	 * @param array $assoc_args Store all the associative arguments.
@@ -33,7 +33,7 @@ class Divi_Shortcode_Migration extends WP_CLI_Command {
 	 */
 	public function reset_divi_post_content( $args, $assoc_args ) {
 
-		if ( ! in_array( $assoc_args['post-type'], get_post_types( array( 'public' => true ) ), true ) ) {
+		if ( ! empty( $assoc_args['post-type'] ) && ! in_array( $assoc_args['post-type'], get_post_types( array( 'public' => true ) ), true ) ) {
 			$this->error( 'You have called the command divi-cli:migrate-shortcodes with wrong/unsupported post-type.' . "\n" );
 		}
 
@@ -144,7 +144,7 @@ class Divi_Shortcode_Migration extends WP_CLI_Command {
 	 */
 	public function divi_migrate_shortcodes( $args, $assoc_args ) {
 
-		if ( ! in_array( $assoc_args['post-type'], get_post_types( array( 'public' => true ) ), true ) ) {
+		if ( ! empty( $assoc_args['post-type'] ) && ! in_array( $assoc_args['post-type'], get_post_types( array( 'public' => true ) ), true ) ) {
 			$this->error( 'You have called the command divi-cli:migrate-shortcodes with wrong/unsupported post-type.' . "\n" );
 		}
 
@@ -218,7 +218,7 @@ class Divi_Shortcode_Migration extends WP_CLI_Command {
 		}
 
 		WP_CLI::line( '' );
-		$this->create_log_file( sprintf( 'divi-shprtcode-logs-%s-%s.csv', $post_status, $this->post_type ), $detail_log );
+		$this->create_log_file( sprintf( 'divi-shortcode-logs-%s-%s.csv', $post_status, $this->post_type ), $detail_log );
 		WP_CLI::line( '' );
 
 		if ( $this->dry_run ) {
@@ -326,10 +326,10 @@ class Divi_Shortcode_Migration extends WP_CLI_Command {
 
 						if ( ! empty( $attributes['header_level'] ) && in_array( $attributes['header_level'], array( 'h1', 'h2', 'h3', 'h4', 'h5', 'h6' ), true ) ) {
 							$h_level = $attributes['header_level'];
-						}
 
-						if ( 'h2' !== $attributes['header_level'] ) {
-							$gb_attr = sprintf( '"level":%s,', str_replace( 'h', '', $attributes['header_level'] ) );
+							if ( 'h2' !== $attributes['header_level'] ) {
+								$gb_attr = sprintf( '"level":%s,', str_replace( 'h', '', $attributes['header_level'] ) );
+							}
 						}
 
 						if ( ! empty( $attributes['url'] ) ) {
@@ -415,6 +415,10 @@ class Divi_Shortcode_Migration extends WP_CLI_Command {
 
 						if ( ! empty( $attributes['title_level'] ) && in_array( $attributes['title_level'], array( 'h1', 'h2', 'h3', 'h4', 'h5', 'h6' ), true ) ) {
 							$h_level = $attributes['title_level'];
+
+							if ( 'h2' !== $attributes['title_level'] ) {
+								$gb_attr = sprintf( '"level":%s,', str_replace( 'h', '', $attributes['title_level'] ) );
+							}
 						}
 
 						if ( ! empty( $attributes['title_font'] ) ) {
@@ -811,10 +815,13 @@ class Divi_Shortcode_Migration extends WP_CLI_Command {
 
 		$csv_generated = fclose( $file ); // @codingStandardsIgnoreLine
 
+		$source_file_url  = str_replace( $uploads['subdir'], '', $uploads['url'] );
+		$source_file_url .= '/divi-migration-logs/' . $file_name;
+
 		if ( $csv_generated ) {
-			$this->write_log( sprintf( 'Log created successfully - %s', $file_name ) );
+			$this->write_log( sprintf( 'Log created successfully - %s', $source_file_url ) );
 		} else {
-			$this->warning( sprintf( 'Failed to write the logs - %s', $file_name ) );
+			$this->warning( sprintf( 'Failed to write the logs - %s', $source_file_url ) );
 		}
 	}
 
