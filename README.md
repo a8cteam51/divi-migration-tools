@@ -55,4 +55,4 @@
 
 * Above command will create a logs inside the uploads directory.
 * path of logs will be `~/uploads/divi-migration-logs`.
-* File names will be `divi-shortcode-{post-status}-{post-type}.csv`. based on post-status and post-type will be passed while calling the command
+* File names will be `divi-shortcode-logs-{post-status}-{post-type}.csv`. based on post-status and post-type will be passed while calling the command

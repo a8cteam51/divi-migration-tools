@@ -218,7 +218,7 @@ class Divi_Shortcode_Migration extends WP_CLI_Command {
 		}
 
 		WP_CLI::line( '' );
-		$this->create_log_file( sprintf( 'divi-shprtcode-logs-%s-%s.csv', $post_status, $this->post_type ), $detail_log );
+		$this->create_log_file( sprintf( 'divi-shortcode-logs-%s-%s.csv', $post_status, $this->post_type ), $detail_log );
 		WP_CLI::line( '' );
 
 		if ( $this->dry_run ) {
