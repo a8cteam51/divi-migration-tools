@@ -72,5 +72,6 @@
 ### Migration logs
 
 * Above command will create a logs inside the uploads directory.
-* path of logs will be `~/uploads/divi-migration-logs`.
+* path of logs will be `~/uploads/divi-migration-logs/`.
 * File names will be `divi-shortcode-logs-{post-status}-{post-type}.csv`. based on post-status and post-type will be passed while calling the command
+* I.e. https://example.com/wp-content/uploads/divi-migration-logs/divi-shortcode-logs-publish-post.csv
