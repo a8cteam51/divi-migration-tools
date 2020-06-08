@@ -14,7 +14,7 @@ class Divi_Shortcode_Migration extends WP_CLI_Command {
 	private $post_type = 'post';
 
 	private $migratable_shortcodes = array( 'et_pb_video', 'et_pb_button', 'et_pb_image', 'et_pb_fullwidth_image', 'et_pb_post_title', 'et_pb_divider', 'et_pb_blurb' );
-	private $clearable_shortcodes  = array( 'et_pb_section', 'et_pb_row', 'et_pb_column', 'et_pb_text', 'et_pb_fullwidth_header', 'et_pb_code', 'et_pb_cta', 'et_pb_row_inner', 'et_pb_column_inner', 'et_pb_sidebar', 'et_pb_slider', 'et_pb_slide', 'et_pb_line_break_holder', 'et_pb_toggle', 'et_pb_fullwidth_code' );
+	private $clearable_shortcodes  = array( 'et_pb_section', 'et_pb_row', 'et_pb_column', 'et_pb_text', 'et_pb_fullwidth_header', 'et_pb_code', 'et_pb_cta', 'et_pb_row_inner', 'et_pb_column_inner', 'et_pb_sidebar', 'et_pb_slider', 'et_pb_slide', 'et_pb_line_break_holder', 'et_pb_toggle', 'et_pb_fullwidth_code', 'et_pb_fullwidth_post_title' );
 	private $skippable_shortcodes  = array( 'et_social_follow', 'embed', 'caption', 'toc', 'Sarcastic', 'gallery', 'Tweet', 'Proof', 'et_pb_social_media_follow', 'et_pb_social_media_follow_network', 'et_pb_testimonial', 'et_pb_contact_form', 'et_pb_contact_field', 'et_pb_blog', 'et_pb_pricing_tables', 'et_pb_video_slider', 'et_pb_video_slider_item', 'et_pb_team_member', 'et_pb_tabs', 'et_pb_tab' );
 
 	/**
@@ -399,6 +399,7 @@ class Divi_Shortcode_Migration extends WP_CLI_Command {
 						$shortcode = $match[0] . ']';
 					}
 					$post_content = str_replace( $shortcode, $gb_divider_block, $post_content );
+					$post_content = str_replace( '[/et_pb_divider]', '', $post_content );
 
 					$status = 'migrated';
 
@@ -596,7 +597,11 @@ class Divi_Shortcode_Migration extends WP_CLI_Command {
 				} elseif ( 'et_pb_video' === $shortcode_name ) {
 					// Youtube embeds.
 					$src = $attributes['src'];
-					if ( ! empty( $src ) && false !== strpos( $src, 'youtube.com' ) ) {
+					if ( empty( $src ) && ! empty( $attributes['src_webm'] ) ) {
+						$src = $attributes['src_webm'];
+					}
+					$src = str_replace( ' ', '', $src );
+					if ( ! empty( $src ) && ( false !== strpos( $src, 'youtube.com' ) || false !== strpos( $src, 'youtu.be' ) ) ) {
 						$gb_youtube_block  = sprintf( '<!-- wp:core-embed/youtube {"url":"%s","type":"video","providerNameSlug":"youtube","className":"wp-embed-aspect-16-9 wp-has-aspect-ratio"} -->', $src );
 						$gb_youtube_block .= PHP_EOL;
 						$gb_youtube_block .= '<figure class="wp-block-embed-youtube wp-block-embed is-type-video is-provider-youtube wp-embed-aspect-16-9 wp-has-aspect-ratio"><div class="wp-block-embed__wrapper">';
@@ -611,9 +616,10 @@ class Divi_Shortcode_Migration extends WP_CLI_Command {
 							$shortcode = $match[0] . ']';
 						}
 						$post_content = str_replace( $shortcode, $gb_youtube_block, $post_content );
+						$post_content = str_replace( '[/et_pb_video]', '', $post_content );
 
 						$status = 'migrated';
-					} elseif ( empty( $src ) && ! empty( $attributes['src_webm'] ) ) {
+					} elseif ( ! empty( $src ) ) {
 						$src   = $attributes['src_webm'];
 						$thumb = ( empty( $attributes['image_src'] ) ) ? '' : 'poster="' . $attributes['image_src'] . '"';
 
@@ -638,6 +644,7 @@ class Divi_Shortcode_Migration extends WP_CLI_Command {
 							$shortcode = $match[0] . ']';
 						}
 						$post_content = str_replace( $shortcode, $gb_video_block, $post_content );
+						$post_content = str_replace( '[/et_pb_video]', '', $post_content );
 
 						$status = 'migrated';
 					}
@@ -676,6 +683,7 @@ class Divi_Shortcode_Migration extends WP_CLI_Command {
 						$shortcode = $match[0] . ']';
 					}
 					$post_content = str_replace( $shortcode, $gb_button_block, $post_content );
+					$post_content = str_replace( '[/et_pb_button]', '', $post_content );
 					$status       = 'migrated';
 				} elseif ( 'et_pb_image' === $shortcode_name || 'et_pb_fullwidth_image' === $shortcode_name ) {
 
@@ -721,6 +729,7 @@ class Divi_Shortcode_Migration extends WP_CLI_Command {
 							$shortcode = $match[0] . ']';
 						}
 						$post_content = str_replace( $shortcode, $gb_img_block, $post_content );
+						$post_content = str_replace( '[/et_pb_image]', '', $post_content );
 
 					} else {
 						$gb_attr = sprintf( 'sizeSlug":"medium",' );
@@ -741,6 +750,7 @@ class Divi_Shortcode_Migration extends WP_CLI_Command {
 							$shortcode = $match[0] . ']';
 						}
 						$post_content = str_replace( $shortcode, $gb_img_block, $post_content );
+						$post_content = str_replace( '[/et_pb_image]', '', $post_content );
 					}
 				}
 			}
