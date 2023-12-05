@@ -1,6 +1,13 @@
 # Divi Migration Tools
 
-### Different criteria to migrate the Divi shortcodes. 
+### How to use this tool
+
+* This tool is primarily for developers migrating content on WordPress sites from Divi to Gutenberg. It migrates some Divi shortcodes to Gutenberg markup.
+* It should be used on development sites with a non-Divi theme, with content that has Divi shortcodes that need to be converted.
+* This tool is only one part of the process... there are shortcodes that are not yet handled by this tool, so you'll need to do some manual cleanup.
+* You'll probably also want to use a Convert to Blocks tool [like this one from 10up](https://github.com/10up/convert-to-blocks) as well.
+
+### What this tool migrates and what it does not
 
 * Migrate the following Divi shortcodes to Gutenberg blocks 🙌
 
@@ -37,7 +44,7 @@
         * This shortcode is coming though a plugin called `Monarch` and it will work independently without Divi
  
     * [et_pb_tabs], [et_pb_tab], [et_pb_testimonial], [et_pb_contact_form] , [et_pb_contact_field], [et_pb_video_slider], [et_pb_video_slider_item], [et_pb_social_media_follow], [et_pb_social_media_follow_network], [et_pb_blog], [et_pb_pricing_tables], [et_pb_team_member], [et_pb_pricing_tables]
-        * These shortcodes needs to be fixed manually by adding needful content markup.
+        * **These shortcodes needs to be fixed manually by adding needful content markup**.
 
 ---
 
@@ -71,3 +78,8 @@
 * path of logs will be `~/uploads/divi-migration-logs/`.
 * File names will be `divi-shortcode-logs-{post-status}-{post-type}.csv`. based on post-status and post-type will be passed while calling the command
 * I.e. https://example.com/wp-content/uploads/divi-migration-logs/divi-shortcode-logs-publish-post.csv
+
+
+### Contributing
+* Feel free to fork this plugin and extend it however you'd like!
+* Feel free to open issues and submit PRs. 
