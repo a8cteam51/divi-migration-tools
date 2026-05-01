@@ -2,14 +2,14 @@
 
 ### How to use this tool
 
-* This tool is primarily for developers migrating content on WordPress sites from Divi to Gutenberg. It migrates some Divi shortcodes to Gutenberg markup.
-* It should be used on development sites with a non-Divi theme, with content that has Divi shortcodes that need to be converted.
-* This tool is only one part of the process... there are shortcodes that are not yet handled by this tool, so you'll need to do some manual cleanup.
+* This tool is primarily for developers migrating content on WordPress sites from Divi to Gutenberg. It migrates some Divi shortcodes and Divi 5 module blocks to Gutenberg markup.
+* It should be used on development sites with a non-Divi theme, with content that has Divi shortcodes or Divi 5 module blocks that need to be converted.
+* This tool is only one part of the process... there are shortcodes and modules that are not yet handled by this tool, so you'll need to do some manual cleanup.
 * You'll probably also want to use a Convert to Blocks tool [like this one from 10up](https://github.com/10up/convert-to-blocks) as well.
 
 ### What this tool migrates and what it does not
 
-* Migrate the following Divi shortcodes to Gutenberg blocks 🙌
+* Migrate the following Divi shortcodes and equivalent Divi 5 module blocks to Gutenberg blocks 🙌
 
     * [et_pb_video]
         * It will pick the youtube url and create a youtube block then it will replace the shortcode with Gutenberg block inside the post-content.

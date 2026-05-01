@@ -16,6 +16,17 @@ class Divi_Shortcode_Migration extends WP_CLI_Command {
 	private $migratable_shortcodes = array( 'et_pb_video', 'et_pb_button', 'et_pb_image', 'et_pb_fullwidth_image', 'et_pb_post_title', 'et_pb_divider', 'et_pb_blurb' );
 	private $clearable_shortcodes  = array( 'et_pb_section', 'et_pb_row', 'et_pb_column', 'et_pb_text', 'et_pb_fullwidth_header', 'et_pb_code', 'et_pb_cta', 'et_pb_row_inner', 'et_pb_column_inner', 'et_pb_sidebar', 'et_pb_slider', 'et_pb_slide', 'et_pb_line_break_holder', 'et_pb_toggle', 'et_pb_fullwidth_code' );
 	private $skippable_shortcodes  = array( 'et_social_follow', 'embed', 'caption', 'toc', 'Sarcastic', 'gallery', 'Tweet', 'Proof', 'et_pb_social_media_follow', 'et_pb_social_media_follow_network', 'et_pb_testimonial', 'et_pb_contact_form', 'et_pb_contact_field', 'et_pb_blog', 'et_pb_pricing_tables', 'et_pb_video_slider', 'et_pb_video_slider_item', 'et_pb_team_member', 'et_pb_tabs', 'et_pb_tab' );
+	private $migratable_divi5_blocks = array(
+		'divi/video'           => 'et_pb_video',
+		'divi/button'          => 'et_pb_button',
+		'divi/image'           => 'et_pb_image',
+		'divi/fullwidth-image' => 'et_pb_fullwidth_image',
+		'divi/post-title'      => 'et_pb_post_title',
+		'divi/divider'         => 'et_pb_divider',
+		'divi/blurb'           => 'et_pb_blurb',
+	);
+	private $clearable_divi5_blocks = array( 'divi/placeholder', 'divi/section', 'divi/row', 'divi/column', 'divi/text', 'divi/fullwidth-header', 'divi/code', 'divi/cta', 'divi/row-inner', 'divi/column-inner', 'divi/sidebar', 'divi/slider', 'divi/slide', 'divi/line-break-holder', 'divi/toggle', 'divi/fullwidth-code' );
+	private $skippable_divi5_blocks = array( 'divi/social-media-follow', 'divi/social-media-follow-item', 'divi/testimonial', 'divi/contact-form', 'divi/contact-field', 'divi/blog', 'divi/pricing-tables', 'divi/video-slider', 'divi/video-slider-item', 'divi/team-member', 'divi/tabs', 'divi/tab' );
 
 	/**
 	 * To reset Divi post Content.
@@ -108,6 +119,7 @@ class Divi_Shortcode_Migration extends WP_CLI_Command {
 				if ( is_wp_error( $result ) ) {
 					$fail_count++;
 				} else {
+					$this->set_divi_builder_editor_mode( $post['ID'], true );
 					$success_count++;
 				}
 			}
@@ -210,7 +222,7 @@ class Divi_Shortcode_Migration extends WP_CLI_Command {
 			$post           = (array) $post;
 			$migrate_status = $this->divi_migrate_single_post_shortcode( $post, $detail_log );
 
-			if ( $migrate_status ) {
+			if ( ! is_wp_error( $migrate_status ) ) {
 				$success_count++;
 			} else {
 				$fail_count++;
@@ -756,6 +768,10 @@ class Divi_Shortcode_Migration extends WP_CLI_Command {
 			}
 		}
 
+		$post_content = $this->divi_migrate_post_divi5_blocks( $post_content, $post, $logs );
+		$post_content = str_replace( '<!-- wp:divi/placeholder -->', '', $post_content );
+		$post_content = str_replace( '<!-- /wp:divi/placeholder -->', '', $post_content );
+
 		if ( ! $this->dry_run ) {
 
 			$new_post = array(
@@ -766,11 +782,990 @@ class Divi_Shortcode_Migration extends WP_CLI_Command {
 			);
 
 			$result = wp_update_post( $new_post, true );
+			if ( ! is_wp_error( $result ) ) {
+				$this->set_divi_builder_editor_mode( $post['ID'], false );
+			}
 		} else {
 			$result = true;
 		}
 
 		return $result;
+	}
+
+	/**
+	 * Toggle Divi builder metadata so the editor matches the stored content.
+	 *
+	 * @param int  $post_id          Post ID.
+	 * @param bool $use_divi_builder Whether the post should open in Divi Builder.
+	 *
+	 * @return void
+	 */
+	private function set_divi_builder_editor_mode( $post_id, $use_divi_builder ) {
+		update_post_meta( $post_id, '_et_pb_use_builder', $use_divi_builder ? 'on' : 'off' );
+
+		$content = get_post_field( 'post_content', $post_id );
+		update_post_meta( $post_id, '_et_pb_use_divi_5', $use_divi_builder && false !== strpos( $content, '<!-- wp:divi/' ) ? 'on' : 'off' );
+	}
+
+	/**
+	 * Convert supported Divi 5 blocks in post content to Gutenberg blocks.
+	 *
+	 * @param string $post_content Post content.
+	 * @param array  $post         Post object array.
+	 * @param array  $logs         Detailed logs.
+	 *
+	 * @return string
+	 */
+	private function divi_migrate_post_divi5_blocks( $post_content, $post, &$logs ) {
+		if ( false === strpos( $post_content, '<!-- wp:divi/' ) ) {
+			return $post_content;
+		}
+
+		$blocks = parse_blocks( $post_content );
+
+		return $this->serialize_migrated_divi5_blocks( $blocks, $post, $logs );
+	}
+
+	/**
+	 * Serialize a list of blocks after recursively converting supported Divi 5 blocks.
+	 *
+	 * @param array $blocks Blocks.
+	 * @param array $post   Post object array.
+	 * @param array $logs   Detailed logs.
+	 *
+	 * @return string
+	 */
+	private function serialize_migrated_divi5_blocks( $blocks, $post, &$logs ) {
+		$content = '';
+
+		foreach ( $blocks as $block ) {
+			$content .= $this->serialize_migrated_divi5_block( $block, $post, $logs );
+		}
+
+		return $content;
+	}
+
+	/**
+	 * Serialize a single block after applying Divi 5 conversion rules.
+	 *
+	 * @param array $block Block.
+	 * @param array $post  Post object array.
+	 * @param array $logs  Detailed logs.
+	 *
+	 * @return string
+	 */
+	private function serialize_migrated_divi5_block( $block, $post, &$logs ) {
+		$block_name = isset( $block['blockName'] ) ? $block['blockName'] : null;
+
+		if ( empty( $block_name ) ) {
+			return isset( $block['innerHTML'] ) ? $block['innerHTML'] : '';
+		}
+
+		if ( in_array( $block_name, $this->clearable_divi5_blocks, true ) ) {
+			if ( ! empty( $block['innerBlocks'] ) ) {
+				return $this->serialize_migrated_divi5_blocks( $block['innerBlocks'], $post, $logs );
+			}
+
+			return $this->get_divi5_clearable_block_content( $block );
+		}
+
+		if ( isset( $this->migratable_divi5_blocks[ $block_name ] ) ) {
+			$status      = 'failed';
+			$replacement = $this->convert_divi5_block_to_gutenberg( $block, $post );
+
+			if ( '' !== $replacement ) {
+				$status = 'migrated';
+			} else {
+				$replacement = serialize_block( $block );
+			}
+
+			if ( $this->dry_run ) {
+				$status = 'to be ' . $status;
+			}
+
+			$logs[] = array( $post['ID'], $block_name, serialize_block( $block ), $status );
+
+			return $replacement;
+		}
+
+		if ( in_array( $block_name, $this->skippable_divi5_blocks, true ) ) {
+			$status = $this->dry_run ? 'to be skipped' : 'skipped';
+			$logs[] = array( $post['ID'], $block_name, serialize_block( $block ), $status );
+
+			return serialize_block( $block );
+		}
+
+		if ( 0 === strpos( $block_name, 'divi/' ) ) {
+			$status = $this->dry_run ? 'to be failed' : 'failed';
+			$logs[] = array( $post['ID'], $block_name, serialize_block( $block ), $status );
+
+			if ( empty( $block['innerBlocks'] ) ) {
+				return serialize_block( $block );
+			}
+
+			return $this->serialize_block_with_migrated_inner_blocks( $block, $post, $logs );
+		}
+
+		if ( empty( $block['innerBlocks'] ) ) {
+			return serialize_block( $block );
+		}
+
+		return $this->serialize_block_with_migrated_inner_blocks( $block, $post, $logs );
+	}
+
+	/**
+	 * Serialize a non-Divi block while allowing Divi child blocks to be migrated.
+	 *
+	 * @param array $block Block.
+	 * @param array $post  Post object array.
+	 * @param array $logs  Detailed logs.
+	 *
+	 * @return string
+	 */
+	private function serialize_block_with_migrated_inner_blocks( $block, $post, &$logs ) {
+		if ( empty( $block['innerContent'] ) || ! function_exists( 'get_comment_delimited_block_content' ) ) {
+			return serialize_block( $block );
+		}
+
+		$inner_content = '';
+		$inner_index   = 0;
+
+		foreach ( $block['innerContent'] as $chunk ) {
+			if ( null === $chunk ) {
+				if ( isset( $block['innerBlocks'][ $inner_index ] ) ) {
+					$inner_content .= $this->serialize_migrated_divi5_block( $block['innerBlocks'][ $inner_index ], $post, $logs );
+				}
+
+				$inner_index++;
+				continue;
+			}
+
+			$inner_content .= $chunk;
+		}
+
+		$attrs = isset( $block['attrs'] ) ? $block['attrs'] : array();
+
+		return get_comment_delimited_block_content( $block['blockName'], $attrs, $inner_content );
+	}
+
+	/**
+	 * Convert a supported Divi 5 block to Gutenberg markup.
+	 *
+	 * @param array $block Block.
+	 * @param array $post  Post object array.
+	 *
+	 * @return string
+	 */
+	private function convert_divi5_block_to_gutenberg( $block, $post ) {
+		$block_name = isset( $block['blockName'] ) ? $block['blockName'] : '';
+		$attrs      = isset( $block['attrs'] ) ? $block['attrs'] : array();
+
+		switch ( $block_name ) {
+			case 'divi/blurb':
+				return $this->convert_divi5_blurb_block( $attrs );
+
+			case 'divi/divider':
+				$line = $this->get_divi5_attribute( $attrs, array( 'divider', 'advanced', 'line' ), array() );
+				$color = is_array( $line ) && ! empty( $line['color'] ) ? $line['color'] : '';
+
+				return $this->get_gutenberg_divider_block( $color );
+
+			case 'divi/post-title':
+				return $this->convert_divi5_post_title_block( $attrs, $post );
+
+			case 'divi/video':
+				return $this->convert_divi5_video_block( $attrs );
+
+			case 'divi/button':
+				$button = $this->get_divi5_attribute( $attrs, array( 'button', 'innerContent' ), array() );
+				if ( ! is_array( $button ) ) {
+					$button = array();
+				}
+
+				$font       = $this->get_divi5_attribute( $attrs, array( 'button', 'decoration', 'font', 'font' ), array() );
+				$background = $this->get_divi5_attribute( $attrs, array( 'button', 'decoration', 'background' ), array() );
+				$text_color = is_array( $font ) && ! empty( $font['color'] ) ? $font['color'] : '';
+				$bg_color   = is_array( $background ) && ! empty( $background['color'] ) ? $background['color'] : '';
+
+				return $this->get_gutenberg_button_block(
+					isset( $button['linkUrl'] ) ? $button['linkUrl'] : '',
+					! empty( $button['linkTarget'] ) && 'on' === $button['linkTarget'],
+					isset( $button['text'] ) ? $button['text'] : '',
+					$text_color,
+					$bg_color
+				);
+
+			case 'divi/image':
+			case 'divi/fullwidth-image':
+				$image         = $this->get_divi5_attribute( $attrs, array( 'image', 'innerContent' ), array() );
+				$sizing        = $this->get_divi5_attribute( $attrs, array( 'module', 'advanced', 'sizing' ), array() );
+				$default_align = 'divi/fullwidth-image' === $block_name ? 'full' : '';
+				if ( 'divi/image' === $block_name && is_array( $sizing ) && ! empty( $sizing['forceFullwidth'] ) && 'off' !== $sizing['forceFullwidth'] ) {
+					$default_align = 'full';
+				}
+				$align         = $this->get_divi5_attribute( $attrs, array( 'module', 'advanced', 'align' ), $default_align );
+
+				if ( ! is_array( $image ) || empty( $image['src'] ) ) {
+					return '';
+				}
+
+				return $this->get_gutenberg_image_block(
+					$image['src'],
+					$this->get_divi5_image_alt( $attrs, isset( $image['alt'] ) ? $image['alt'] : '' ),
+					! empty( $align ) ? $align : $default_align,
+					is_array( $sizing ) && ! empty( $sizing['maxWidth'] ) ? $sizing['maxWidth'] : '',
+					is_array( $sizing ) && ! empty( $sizing['maxHeight'] ) ? $sizing['maxHeight'] : ''
+				);
+		}
+
+		return '';
+	}
+
+	/**
+	 * Convert a Divi 5 video block.
+	 *
+	 * @param array $attrs Block attributes.
+	 *
+	 * @return string
+	 */
+	private function convert_divi5_video_block( $attrs ) {
+		$video = $this->get_divi5_attribute( $attrs, array( 'video', 'innerContent' ), array() );
+
+		if ( ! is_array( $video ) ) {
+			return '';
+		}
+
+		$src = isset( $video['src'] ) ? $video['src'] : '';
+
+		if ( ! empty( $src ) && false !== strpos( $src, 'youtube.com' ) ) {
+			return $this->get_gutenberg_youtube_block( $src );
+		}
+
+		$webm = isset( $video['webm'] ) ? $video['webm'] : '';
+		if ( empty( $src ) && ! empty( $webm ) ) {
+			$thumbnail = $this->get_divi5_attribute( $attrs, array( 'thumbnail', 'innerContent' ), array() );
+			$poster    = is_array( $thumbnail ) && ! empty( $thumbnail['src'] ) ? $thumbnail['src'] : '';
+
+			return $this->get_gutenberg_video_block( $webm, $poster );
+		}
+
+		return '';
+	}
+
+	/**
+	 * Convert a Divi 5 blurb block.
+	 *
+	 * @param array $attrs Block attributes.
+	 *
+	 * @return string
+	 */
+	private function convert_divi5_blurb_block( $attrs ) {
+		$image_icon = $this->get_divi5_attribute( $attrs, array( 'imageIcon', 'innerContent' ), array() );
+		$alignment  = $this->get_divi5_attribute( $attrs, array( 'imageIcon', 'advanced', 'alignment' ), '' );
+		if ( empty( $alignment ) ) {
+			$sizing    = $this->get_divi5_attribute( $attrs, array( 'imageIcon', 'decoration', 'sizing' ), array() );
+			$alignment = is_array( $sizing ) && ! empty( $sizing['alignment'] ) ? $sizing['alignment'] : '';
+		}
+
+		$gb_blurb_block = '';
+
+		if ( is_array( $image_icon ) && ! empty( $image_icon['src'] ) ) {
+			$gb_blurb_block = $this->get_gutenberg_image_block(
+				$image_icon['src'],
+				$this->get_divi5_image_alt( $attrs, isset( $image_icon['alt'] ) ? $image_icon['alt'] : '', array( 'imageIcon' ) ),
+				! empty( $alignment ) ? $alignment : ''
+			);
+		}
+
+		$title = $this->get_divi5_attribute( $attrs, array( 'title', 'innerContent' ), array() );
+		if ( is_array( $title ) && ! empty( $title['text'] ) ) {
+			$font        = $this->get_divi5_attribute( $attrs, array( 'title', 'decoration', 'font', 'font' ), array() );
+			$level       = is_array( $font ) && ! empty( $font['headingLevel'] ) ? $font['headingLevel'] : 'h4';
+			$heading_url = ! empty( $title['url'] ) ? $title['url'] : '';
+			$new_window  = ! empty( $title['target'] ) && 'on' === $title['target'];
+
+			if ( '' !== $gb_blurb_block ) {
+				$gb_blurb_block .= PHP_EOL;
+			}
+
+			$gb_blurb_block .= $this->get_gutenberg_heading_block( $title['text'], $level, $heading_url, $new_window );
+			$gb_blurb_block .= PHP_EOL;
+		}
+
+		$content = $this->get_divi5_attribute( $attrs, array( 'content', 'innerContent' ), '' );
+		if ( is_array( $content ) && isset( $content['text'] ) ) {
+			$content = $content['text'];
+		}
+
+		if ( is_string( $content ) && '' !== trim( $content ) ) {
+			$gb_blurb_block .= $this->get_gutenberg_paragraph_block( $content );
+		}
+
+		return $gb_blurb_block;
+	}
+
+	/**
+	 * Convert a Divi 5 post title block.
+	 *
+	 * @param array $attrs Block attributes.
+	 * @param array $post  Post object array.
+	 *
+	 * @return string
+	 */
+	private function convert_divi5_post_title_block( $attrs, $post ) {
+		$show_title = $this->get_divi5_attribute( $attrs, array( 'title', 'advanced', 'showTitle' ), 'on' );
+		$show_meta  = $this->get_divi5_attribute( $attrs, array( 'meta', 'advanced', 'showMeta' ), 'on' );
+		$show_image = $this->get_divi5_attribute( $attrs, array( 'featuredImage', 'advanced', 'enabled' ), 'on' );
+		$placement  = $this->get_divi5_attribute( $attrs, array( 'featuredImage', 'advanced', 'placement' ), 'below' );
+
+		$gb_title_block = '';
+		if ( 'off' !== $show_title ) {
+			$font = $this->get_divi5_attribute( $attrs, array( 'title', 'decoration', 'font', 'font' ), array() );
+			if ( ! is_array( $font ) ) {
+				$font = array();
+			}
+
+			$link = $this->get_divi5_attribute( $attrs, array( 'module', 'advanced', 'link' ), array() );
+			if ( ! is_array( $link ) ) {
+				$link = array();
+			}
+
+			$gb_title_block = $this->get_gutenberg_post_title_heading_block(
+				$post,
+				isset( $font['headingLevel'] ) ? $font['headingLevel'] : 'h2',
+				isset( $font['fontFamily'] ) ? $font['fontFamily'] : '',
+				isset( $font['color'] ) ? $font['color'] : '',
+				isset( $font['size'] ) ? $font['size'] : '',
+				isset( $font['lineHeight'] ) ? $font['lineHeight'] : '',
+				isset( $link['url'] ) ? $link['url'] : '',
+				! empty( $link['target'] ) && 'on' === $link['target']
+			);
+		}
+
+		$gb_author_line_block = '';
+		if ( 'off' !== $show_meta ) {
+			$gb_author_line_block = $this->get_gutenberg_post_title_meta_block(
+				$post,
+				'off' !== $this->get_divi5_attribute( $attrs, array( 'meta', 'advanced', 'showAuthor' ), 'on' ),
+				'off' !== $this->get_divi5_attribute( $attrs, array( 'meta', 'advanced', 'showDate' ), 'on' ),
+				'off' !== $this->get_divi5_attribute( $attrs, array( 'meta', 'advanced', 'showCategories' ), 'on' ),
+				'off' !== $this->get_divi5_attribute( $attrs, array( 'meta', 'advanced', 'showCommentsCount' ), 'on' )
+			);
+		}
+
+		$gb_img_block = '';
+		if ( 'off' !== $show_image ) {
+			$att_id = get_post_meta( $post['ID'], '_thumbnail_id', true );
+			if ( ! empty( $att_id ) ) {
+				$gb_img_block = $this->get_gutenberg_featured_image_block( $att_id );
+			}
+		}
+
+		$background       = $this->get_divi5_attribute( $attrs, array( 'module', 'decoration', 'background' ), array() );
+		$background_color = is_array( $background ) && ! empty( $background['color'] ) ? $background['color'] : '';
+
+		return $this->get_gutenberg_post_title_group_block(
+			$gb_title_block,
+			$gb_author_line_block,
+			$gb_img_block,
+			$placement,
+			$background_color
+		);
+	}
+
+	/**
+	 * Get content stored in Divi 5 blocks that the legacy command clears.
+	 *
+	 * @param array $block Block.
+	 *
+	 * @return string
+	 */
+	private function get_divi5_clearable_block_content( $block ) {
+		$attrs = isset( $block['attrs'] ) ? $block['attrs'] : array();
+		$value = $this->get_divi5_attribute( $attrs, array( 'content', 'innerContent' ), '' );
+
+		if ( is_array( $value ) && isset( $value['text'] ) ) {
+			$value = $value['text'];
+		}
+
+		if ( is_string( $value ) ) {
+			if ( isset( $block['blockName'] ) && 'divi/text' === $block['blockName'] ) {
+				return $this->get_gutenberg_paragraph_block( $value );
+			}
+
+			return $value;
+		}
+
+		return '';
+	}
+
+	/**
+	 * Read a Divi 5 nested attribute and unwrap its desktop value.
+	 *
+	 * @param array $attrs   Attributes.
+	 * @param array $path    Attribute path.
+	 * @param mixed $default Default value.
+	 *
+	 * @return mixed
+	 */
+	private function get_divi5_attribute( $attrs, $path, $default = '' ) {
+		$value = $attrs;
+
+		foreach ( $path as $part ) {
+			if ( ! is_array( $value ) || ! array_key_exists( $part, $value ) ) {
+				return $default;
+			}
+
+			$value = $value[ $part ];
+		}
+
+		return $this->unwrap_divi5_responsive_value( $value, $default );
+	}
+
+	/**
+	 * Unwrap Divi 5 responsive attribute containers.
+	 *
+	 * @param mixed $value   Value.
+	 * @param mixed $default Default value.
+	 *
+	 * @return mixed
+	 */
+	private function unwrap_divi5_responsive_value( $value, $default = '' ) {
+		if ( is_array( $value ) && array_key_exists( 'desktop', $value ) && is_array( $value['desktop'] ) && array_key_exists( 'value', $value['desktop'] ) ) {
+			return $value['desktop']['value'];
+		}
+
+		if ( is_array( $value ) && array_key_exists( 'value', $value ) ) {
+			return $value['value'];
+		}
+
+		return null === $value ? $default : $value;
+	}
+
+	/**
+	 * Read image alt text from either legacy or current Divi 5 image attributes.
+	 *
+	 * @param array        $attrs           Block attributes.
+	 * @param string       $default_alt     Default alt text.
+	 * @param string|array $target_elements Target element names.
+	 *
+	 * @return string
+	 */
+	private function get_divi5_image_alt( $attrs, $default_alt = '', $target_elements = array( 'image' ) ) {
+		$target_elements = (array) $target_elements;
+		$decorative_attributes = $this->get_divi5_attribute( $attrs, array( 'module', 'decoration', 'attributes' ), array() );
+
+		if ( is_array( $decorative_attributes ) && isset( $decorative_attributes['attributes'] ) && is_array( $decorative_attributes['attributes'] ) ) {
+			$decorative_attributes = $decorative_attributes['attributes'];
+		}
+
+		if ( is_array( $decorative_attributes ) ) {
+			foreach ( $decorative_attributes as $attribute ) {
+				if (
+					is_array( $attribute )
+					&& isset( $attribute['targetElement'], $attribute['name'], $attribute['value'] )
+					&& in_array( $attribute['targetElement'], $target_elements, true )
+					&& 'alt' === $attribute['name']
+				) {
+					return $attribute['value'];
+				}
+			}
+		}
+
+		return $default_alt;
+	}
+
+	/**
+	 * Build one or more Gutenberg paragraph blocks.
+	 *
+	 * @param string $content Paragraph content.
+	 *
+	 * @return string
+	 */
+	private function get_gutenberg_paragraph_block( $content ) {
+		$content = trim( $this->normalize_divi5_html_content( $content ) );
+
+		if ( '' === $content ) {
+			return '';
+		}
+
+		if ( preg_match_all( '/<p\b[^>]*>.*?<\/p>/is', $content, $matches ) ) {
+			$outside_paragraphs = trim( str_replace( $matches[0], '', $content ) );
+			if ( '' === $outside_paragraphs ) {
+				$blocks = array();
+				foreach ( $matches[0] as $paragraph ) {
+					$blocks[] = '<!-- wp:paragraph -->' . PHP_EOL . wp_kses_post( trim( $paragraph ) ) . PHP_EOL . '<!-- /wp:paragraph -->';
+				}
+
+				return implode( PHP_EOL, $blocks );
+			}
+		}
+
+		$paragraph  = '<!-- wp:paragraph -->';
+		$paragraph .= PHP_EOL;
+		$paragraph .= '<p>' . wp_kses_post( $content ) . '</p>';
+		$paragraph .= PHP_EOL;
+		$paragraph .= '<!-- /wp:paragraph -->';
+
+		return $paragraph;
+	}
+
+	/**
+	 * Normalize HTML stored in Divi 5 inner content values.
+	 *
+	 * @param string $content Content.
+	 *
+	 * @return string
+	 */
+	private function normalize_divi5_html_content( $content ) {
+		if ( ! is_string( $content ) ) {
+			return '';
+		}
+
+		return str_replace(
+			array( '\\u003c', '\\u003e', '\\u0026', '\\u0022', '\\u0027', '\\u002F', '\\u003d', 'u003c', 'u003e', 'u0026', 'u0022', 'u0027', 'u002F', 'u003d' ),
+			array( '<', '>', '&', '"', "'", '/', '=', '<', '>', '&', '"', "'", '/', '=' ),
+			$content
+		);
+	}
+
+	/**
+	 * Build a Gutenberg button block.
+	 *
+	 * @param string $url        Button URL.
+	 * @param bool   $new_window Whether to open in a new window.
+	 * @param string $text       Button text.
+	 * @param string $text_color Text color.
+	 * @param string $bg_color   Background color.
+	 *
+	 * @return string
+	 */
+	private function get_gutenberg_button_block( $url, $new_window, $text, $text_color = '', $bg_color = '' ) {
+		$attrs      = array();
+		$classes    = array( 'wp-block-button__link' );
+		$style_bits = array();
+
+		if ( $new_window ) {
+			$attrs['linkTarget'] = '_blank';
+		}
+
+		if ( ! empty( $text_color ) ) {
+			$attrs['style']['color']['text'] = $text_color;
+			$classes[] = 'has-text-color';
+			$style_bits[] = sprintf( 'color:%s', $text_color );
+		}
+
+		if ( ! empty( $bg_color ) ) {
+			$attrs['style']['color']['background'] = $bg_color;
+			$classes[] = 'has-background';
+			$style_bits[] = sprintf( 'background-color:%s', $bg_color );
+		}
+
+		$classes[] = 'wp-element-button';
+
+		$attr_json = empty( $attrs ) ? '' : ' ' . wp_json_encode( $attrs );
+		$href     = empty( $url ) ? '' : sprintf( ' href="%s"', esc_url( $url ) );
+		$target   = $new_window ? ' target="_blank"' : '';
+		$style    = empty( $style_bits ) ? '' : ' style="' . esc_attr( implode( ';', $style_bits ) ) . '"';
+
+		$gb_button_block  = sprintf( '<!-- wp:button%s -->', $attr_json );
+		$gb_button_block .= PHP_EOL;
+		$gb_button_block .= sprintf( '<div class="wp-block-button"><a class="%s"%s%s%s>%s</a></div>', esc_attr( implode( ' ', $classes ) ), $href, $target, $style, wp_kses_post( $text ) );
+		$gb_button_block .= PHP_EOL;
+		$gb_button_block .= '<!-- /wp:button -->';
+
+		return $gb_button_block;
+	}
+
+	/**
+	 * Build a Gutenberg image block.
+	 *
+	 * @param string $src    Image URL.
+	 * @param string $alt    Image alt text.
+	 * @param string $align  Image alignment.
+	 * @param string $width  Image width.
+	 * @param string $height Image height.
+	 *
+	 * @return string
+	 */
+	private function get_gutenberg_image_block( $src, $alt = '', $align = '', $width = '', $height = '' ) {
+		$att_id      = attachment_url_to_postid( $src );
+		$attrs       = array(
+			'sizeSlug'        => 'medium',
+			'linkDestination' => 'none',
+		);
+		$style_bits  = array();
+		$figure_bits = array( 'wp-block-image' );
+
+		if ( $att_id ) {
+			$attrs['id'] = $att_id;
+		}
+
+		if ( ! empty( $align ) ) {
+			$attrs['align'] = $align;
+			$figure_bits[]  = 'align' . $align;
+		}
+
+		if ( ! empty( $width ) ) {
+			$attrs['width'] = $width;
+			$style_bits[]   = sprintf( 'width:%s', $width );
+		}
+
+		if ( ! empty( $height ) ) {
+			$attrs['height'] = $height;
+			$style_bits[]    = sprintf( 'height:%s', $height );
+		}
+
+		$figure_bits[] = 'size-medium';
+		if ( ! empty( $width ) || ! empty( $height ) ) {
+			$figure_bits[] = 'is-resized';
+		}
+
+		$img_class = $att_id ? sprintf( ' class="wp-image-%s"', esc_attr( $att_id ) ) : '';
+		$style     = ! empty( $style_bits ) ? ' style="' . esc_attr( implode( ';', $style_bits ) ) . '"' : '';
+
+		$gb_img_block  = sprintf( '<!-- wp:image %s -->', wp_json_encode( $attrs ) );
+		$gb_img_block .= PHP_EOL;
+		$gb_img_block .= sprintf( '<figure class="%s"><img src="%s" alt="%s"%s%s/></figure>', esc_attr( implode( ' ', $figure_bits ) ), esc_url( $src ), esc_attr( $alt ), $img_class, $style );
+		$gb_img_block .= PHP_EOL;
+		$gb_img_block .= '<!-- /wp:image -->';
+
+		return $gb_img_block;
+	}
+
+	/**
+	 * Build a Gutenberg heading block.
+	 *
+	 * @param string $text       Heading text.
+	 * @param string $level      Heading level.
+	 * @param string $url        Heading link.
+	 * @param bool   $new_window Whether to open in a new window.
+	 *
+	 * @return string
+	 */
+	private function get_gutenberg_heading_block( $text, $level = 'h4', $url = '', $new_window = false ) {
+		if ( ! in_array( $level, array( 'h1', 'h2', 'h3', 'h4', 'h5', 'h6' ), true ) ) {
+			$level = 'h4';
+		}
+
+		$attrs = array();
+		if ( 'h2' !== $level ) {
+			$attrs['level'] = (int) str_replace( 'h', '', $level );
+		}
+
+		if ( ! empty( $url ) ) {
+			$target = $new_window ? ' target="_blank"' : '';
+			$text   = sprintf( '<a href="%s"%s>%s</a>', esc_url( $url ), $target, wp_kses_post( $text ) );
+		}
+
+		$attr_json         = empty( $attrs ) ? '' : ' ' . wp_json_encode( $attrs );
+		$gb_heading_block  = sprintf( '<!-- wp:heading%s -->', $attr_json );
+		$gb_heading_block .= PHP_EOL;
+		$gb_heading_block .= sprintf( '<%s class="wp-block-heading">', $level );
+		$gb_heading_block .= wp_kses_post( $text );
+		$gb_heading_block .= sprintf( '</%s>', $level );
+		$gb_heading_block .= PHP_EOL;
+		$gb_heading_block .= '<!-- /wp:heading -->';
+
+		return $gb_heading_block;
+	}
+
+	/**
+	 * Build a Gutenberg separator block.
+	 *
+	 * @param string $color Separator color.
+	 *
+	 * @return string
+	 */
+	private function get_gutenberg_divider_block( $color = '' ) {
+		$class_str = 'wp-block-separator has-alpha-channel-opacity is-style-wide';
+		$gb_attr   = array(
+			'opacity'   => 'alpha-channel',
+			'className' => 'is-style-wide',
+		);
+		$hr_style  = '';
+
+		if ( ! empty( $color ) ) {
+			$class_str = 'wp-block-separator has-text-color has-alpha-channel-opacity has-background is-style-wide';
+			$hr_style   = sprintf( ' style="background-color:%s;color:%s"', esc_attr( $color ), esc_attr( $color ) );
+			$gb_attr    = array(
+				'opacity'   => 'alpha-channel',
+				'className' => 'is-style-wide',
+				'style'     => array(
+					'color' => array(
+						'background' => $color,
+					),
+				),
+			);
+		}
+
+		$gb_divider_block  = sprintf( '<!-- wp:separator %s -->', wp_json_encode( $gb_attr ) );
+		$gb_divider_block .= PHP_EOL;
+		$gb_divider_block .= sprintf( '<hr class="%s"%s/>', esc_attr( $class_str ), $hr_style );
+		$gb_divider_block .= PHP_EOL;
+		$gb_divider_block .= '<!-- /wp:separator -->';
+
+		return $gb_divider_block;
+	}
+
+	/**
+	 * Build a Gutenberg YouTube embed block.
+	 *
+	 * @param string $src Video URL.
+	 *
+	 * @return string
+	 */
+	private function get_gutenberg_youtube_block( $src ) {
+		$attrs = array(
+			'url'              => $src,
+			'type'             => 'video',
+			'providerNameSlug' => 'youtube',
+			'responsive'       => true,
+			'className'        => 'wp-embed-aspect-16-9 wp-has-aspect-ratio',
+		);
+
+		$gb_youtube_block  = sprintf( '<!-- wp:embed %s -->', wp_json_encode( $attrs ) );
+		$gb_youtube_block .= PHP_EOL;
+		$gb_youtube_block .= '<figure class="wp-block-embed is-type-video is-provider-youtube wp-block-embed-youtube wp-embed-aspect-16-9 wp-has-aspect-ratio"><div class="wp-block-embed__wrapper">';
+		$gb_youtube_block .= PHP_EOL;
+		$gb_youtube_block .= esc_url( $src );
+		$gb_youtube_block .= PHP_EOL;
+		$gb_youtube_block .= '</div></figure>';
+		$gb_youtube_block .= PHP_EOL;
+		$gb_youtube_block .= '<!-- /wp:embed -->';
+
+		return $gb_youtube_block;
+	}
+
+	/**
+	 * Build a Gutenberg video block.
+	 *
+	 * @param string $src    Video URL.
+	 * @param string $poster Poster URL.
+	 *
+	 * @return string
+	 */
+	private function get_gutenberg_video_block( $src, $poster = '' ) {
+		$att_id = attachment_url_to_postid( $src );
+		$attrs  = $att_id ? array( 'id' => $att_id ) : array();
+		$poster = empty( $poster ) ? '' : ' poster="' . esc_url( $poster ) . '"';
+
+		$gb_video_block  = empty( $attrs ) ? '<!-- wp:video -->' : sprintf( '<!-- wp:video %s -->', wp_json_encode( $attrs ) );
+		$gb_video_block .= PHP_EOL;
+		$gb_video_block .= '<figure class="wp-block-video">';
+		$gb_video_block .= PHP_EOL;
+		$gb_video_block .= sprintf( '<video controls src="%s"%s></video>', esc_url( $src ), $poster );
+		$gb_video_block .= PHP_EOL;
+		$gb_video_block .= '</figure>';
+		$gb_video_block .= PHP_EOL;
+		$gb_video_block .= '<!-- /wp:video -->';
+
+		return $gb_video_block;
+	}
+
+	/**
+	 * Build the heading block used by post title conversion.
+	 *
+	 * @param array  $post       Post object array.
+	 * @param string $level      Heading level.
+	 * @param string $font       Font family.
+	 * @param string $color      Text color.
+	 * @param string $size       Font size.
+	 * @param string $lineheight Line height.
+	 * @param string $url        Link URL.
+	 * @param bool   $new_window Whether to open in a new window.
+	 *
+	 * @return string
+	 */
+	private function get_gutenberg_post_title_heading_block( $post, $level = 'h2', $font = '', $color = '', $size = '', $lineheight = '', $url = '', $new_window = false ) {
+		if ( ! in_array( $level, array( 'h1', 'h2', 'h3', 'h4', 'h5', 'h6' ), true ) ) {
+			$level = 'h2';
+		}
+
+		$attrs      = array();
+		$classes    = array( 'wp-block-heading' );
+		$style_bits = array();
+
+		if ( 'h2' !== $level ) {
+			$attrs['level'] = (int) str_replace( 'h', '', $level );
+		}
+
+		if ( ! empty( $font ) ) {
+			$attrs['style']['typography']['fontFamily'] = $font;
+			$style_bits[] = sprintf( 'font-family:%s', $font );
+		}
+
+		if ( ! empty( $color ) ) {
+			$attrs['style']['color']['text'] = $color;
+			$classes[]                      = 'has-text-color';
+			$style_bits[] = sprintf( 'color:%s', $color );
+		}
+
+		if ( ! empty( $size ) ) {
+			$attrs['style']['typography']['fontSize'] = $size;
+			$classes[]                                = 'has-custom-font-size';
+			$style_bits[] = sprintf( 'font-size:%s', $size );
+		}
+
+		if ( ! empty( $lineheight ) ) {
+			$attrs['style']['typography']['lineHeight'] = $lineheight;
+			$style_bits[] = sprintf( 'line-height:%s', $lineheight );
+		}
+
+		$h_text = $post['post_title'];
+		if ( ! empty( $url ) ) {
+			$target = $new_window ? ' target="_blank"' : '';
+			$h_text = sprintf( '<a href="%s"%s>%s</a>', esc_url( $url ), $target, esc_html( $h_text ) );
+		} else {
+			$h_text = esc_html( $h_text );
+		}
+
+		$class_attr = ' class="' . esc_attr( implode( ' ', array_unique( $classes ) ) ) . '"';
+		$style_attr = ! empty( $style_bits ) ? ' style="' . esc_attr( implode( ';', $style_bits ) ) . '"' : '';
+		$attr_json  = empty( $attrs ) ? '' : ' ' . wp_json_encode( $attrs );
+
+		$gb_title_block  = sprintf( '<!-- wp:heading%s -->', $attr_json );
+		$gb_title_block .= PHP_EOL;
+		$gb_title_block .= sprintf( '<%s%s%s>', $level, $class_attr, $style_attr );
+		$gb_title_block .= $h_text;
+		$gb_title_block .= sprintf( '</%s>', $level );
+		$gb_title_block .= PHP_EOL;
+		$gb_title_block .= '<!-- /wp:heading -->';
+
+		return $gb_title_block;
+	}
+
+	/**
+	 * Build the meta paragraph used by post title conversion.
+	 *
+	 * @param array $post            Post object array.
+	 * @param bool  $include_author  Include author.
+	 * @param bool  $include_date    Include date.
+	 * @param bool  $include_terms   Include categories.
+	 * @param bool  $include_comment Include comments.
+	 *
+	 * @return string
+	 */
+	private function get_gutenberg_post_title_meta_block( $post, $include_author, $include_date, $include_terms, $include_comment ) {
+		$author_line = '';
+
+		if ( $include_author ) {
+			$author = get_user_by( 'id', $post['post_author'] );
+			if ( $author ) {
+				$author_line = sprintf( 'by <a href="%s">%s</a>', esc_url( get_author_posts_url( $post['post_author'] ) ), esc_html( $author->display_name ) );
+			}
+		}
+
+		if ( $include_date ) {
+			if ( ! empty( $author_line ) ) {
+				$author_line .= ' | ';
+			}
+			$author_line .= esc_html( date( 'M j, Y', strtotime( $post['post_date'] ) ) );
+		}
+
+		if ( $include_terms ) {
+			if ( ! empty( $author_line ) ) {
+				$author_line .= ' | ';
+			}
+
+			$terms = get_the_terms( $post['ID'], 'category' );
+			if ( ! empty( $terms ) && ! is_wp_error( $terms ) ) {
+				foreach ( $terms as $term ) {
+					$author_line .= sprintf( '<a href="%s">%s</a>, ', esc_url( get_term_link( $term->term_id ) ), esc_html( $term->name ) );
+				}
+			}
+		}
+
+		if ( $include_comment ) {
+			if ( ! empty( $author_line ) ) {
+				$author_line .= ' | ';
+			}
+
+			$comment_count = get_comment_count( $post['ID'] );
+			if ( $comment_count['approved'] > 0 ) {
+				$author_line .= esc_html( $comment_count['approved'] . ' Comments' );
+			}
+		}
+
+		if ( empty( $author_line ) ) {
+			return '';
+		}
+
+		$gb_author_line_block  = '<!-- wp:paragraph -->';
+		$gb_author_line_block .= PHP_EOL;
+		$gb_author_line_block .= '<p>' . $author_line . '</p>';
+		$gb_author_line_block .= PHP_EOL;
+		$gb_author_line_block .= '<!-- /wp:paragraph -->';
+
+		return $gb_author_line_block;
+	}
+
+	/**
+	 * Build featured image block used by post title conversion.
+	 *
+	 * @param int $att_id Attachment ID.
+	 *
+	 * @return string
+	 */
+	private function get_gutenberg_featured_image_block( $att_id ) {
+		$src = wp_get_attachment_url( $att_id );
+		if ( empty( $src ) ) {
+			return '';
+		}
+
+		return $this->get_gutenberg_image_block( $src, '', '' );
+	}
+
+	/**
+	 * Build post title group block.
+	 *
+	 * @param string $title_block      Title block.
+	 * @param string $meta_block       Meta block.
+	 * @param string $image_block      Image block.
+	 * @param string $image_placement  Featured image placement.
+	 * @param string $background_color Background color.
+	 *
+	 * @return string
+	 */
+	private function get_gutenberg_post_title_group_block( $title_block, $meta_block, $image_block, $image_placement, $background_color = '' ) {
+		$attrs      = array();
+		$style_attr = '';
+		$div_class  = 'wp-block-group';
+
+		if ( ! empty( $background_color ) ) {
+			$attrs['style']['color']['background'] = $background_color;
+			$style_attr = sprintf( ' style="background-color:%s;"', esc_attr( $background_color ) );
+			$div_class .= ' has-background';
+		}
+
+		$attr_json = empty( $attrs ) ? '' : ' ' . wp_json_encode( $attrs );
+
+		$gb_group_block  = sprintf( '<!-- wp:group%s -->', $attr_json );
+		$gb_group_block .= PHP_EOL;
+		$gb_group_block .= sprintf( '<div class="%s"%s>', esc_attr( $div_class ), $style_attr );
+		$gb_group_block .= PHP_EOL;
+
+		if ( ! empty( $image_block ) && 'above' === $image_placement ) {
+			$gb_group_block .= $image_block . PHP_EOL;
+		}
+
+		if ( ! empty( $title_block ) ) {
+			$gb_group_block .= $title_block . PHP_EOL;
+		}
+
+		if ( ! empty( $meta_block ) ) {
+			$gb_group_block .= $meta_block . PHP_EOL;
+		}
+
+		if ( ! empty( $image_block ) && 'above' !== $image_placement ) {
+			$gb_group_block .= $image_block . PHP_EOL;
+		}
+
+		$gb_group_block .= '</div>';
+		$gb_group_block .= PHP_EOL;
+		$gb_group_block .= '<!-- /wp:group -->';
+
+		return $gb_group_block;
 	}
 
 	/**
